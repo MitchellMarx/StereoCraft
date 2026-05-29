@@ -19,7 +19,6 @@ repositories {
     maven("https://maven.neoforged.net/releases") { name = "NeoForged" }
     maven("https://maven.parchmentmc.org") { name = "ParchmentMC" }
     maven("https://api.modrinth.com/maven") { name = "Modrinth" }
-    maven("https://maven.shedaniel.me/") { name = "Shedaniel" }
 }
 
 neoForge {

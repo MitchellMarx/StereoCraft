@@ -13,7 +13,6 @@ Side-by-side (SBS) stereoscopic 3D rendering for 3D TVs, 3D monitors, and SBS-co
 '''
 displayURL = "https://github.com/MitchellMarx/Stereoscopic-Neoforge"
 logoFile = "icon.png"
-side = "CLIENT"
 
 [[mixins]]
 config = "stereoscopic.mixins.json"
@@ -24,27 +23,27 @@ config = "stereoscopic-iris.mixins.json"
 [[dependencies.stereoscopic]]
 modId = "neoforge"
 type = "required"
-versionRange = "[21.1.228,22)"
+versionRange = "[${neoforge_version},22)"
 ordering = "NONE"
 side = "CLIENT"
 
 [[dependencies.stereoscopic]]
 modId = "minecraft"
 type = "required"
-versionRange = "[1.21.1,1.21.2)"
+versionRange = "[${minecraft_version},1.21.2)"
 ordering = "NONE"
 side = "CLIENT"
 
 [[dependencies.stereoscopic]]
 modId = "sodium"
 type = "required"
-versionRange = "[0.6.13,0.7)"
+versionRange = "[${sodium_version},0.7)"
 ordering = "AFTER"
 side = "CLIENT"
 
 [[dependencies.stereoscopic]]
 modId = "iris"
 type = "optional"
-versionRange = "[1.8.12,1.9)"
+versionRange = "[${iris_version},1.9)"
 ordering = "AFTER"
 side = "CLIENT"
