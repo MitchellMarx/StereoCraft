@@ -1,0 +1,24 @@
+# Build outputs
+build/
+out/
+.gradle/
+*.jar.tmp
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Local env
+.env
+.env.local
