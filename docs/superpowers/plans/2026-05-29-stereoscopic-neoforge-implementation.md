@@ -567,6 +567,21 @@ and to build.gradle.kts dependencies block:
 Version 2.11.0 matches what NeoForge 21.1.228 ships at runtime; do not
 pin a different version.
 
+**Note on test classpath (SLF4J):** Similar to Gson, NeoForge's
+ModDevGradle does not propagate Minecraft's transitive SLF4J to the test
+classpath. If `StereoOptionsIOTest.ipdIsClampedOnRead` (or any other test
+that triggers a `Stereoscopic.LOG` call site) fails with
+`NoClassDefFoundError: org/slf4j/LoggerFactory`, add to gradle.properties:
+
+    slf4j_version=2.0.9
+
+and to build.gradle.kts dependencies block:
+
+    testImplementation("org.slf4j:slf4j-api:${project.property("slf4j_version")}")
+
+Version 2.0.9 matches Mojang's launcher manifest for MC 1.21.x; do not
+pin a different version.
+
 - [ ] **Step 6: Commit**
 
 ```bash

@@ -56,6 +56,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.joml:joml:${project.property("joml_version")}")
     testImplementation("com.google.code.gson:gson:${project.property("gson_version")}")
+    testImplementation("org.slf4j:slf4j-api:${project.property("slf4j_version")}")
 }
 
 tasks.processResources {
