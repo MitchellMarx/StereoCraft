@@ -157,8 +157,8 @@ dependencies {
     implementation("maven.modrinth:sodium:mc${project.property("minecraft_version")}-${project.property("sodium_version")}-neoforge")
 
     // Iris NeoForge: optional soft dep
-    compileOnly("maven.modrinth:iris:${project.property("iris_version")}+mc${project.property("minecraft_version")}-neoforge")
-    runtimeOnly("maven.modrinth:iris:${project.property("iris_version")}+mc${project.property("minecraft_version")}-neoforge")
+    compileOnly("maven.modrinth:iris:${project.property("iris_version")}+${project.property("minecraft_version")}-neoforge")
+    runtimeOnly("maven.modrinth:iris:${project.property("iris_version")}+${project.property("minecraft_version")}-neoforge")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
