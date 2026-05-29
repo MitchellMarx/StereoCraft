@@ -1,0 +1,9 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "com.mitchellmarx.stereoscopic.mixin",
+    "compatibilityLevel": "JAVA_21",
+    "client": [],
+    "mixins": [],
+    "injectors": { "defaultRequire": 1 }
+}
