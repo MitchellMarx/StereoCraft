@@ -1,0 +1,50 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "LGPL-3.0-only"
+issueTrackerURL = "https://github.com/MitchellMarx/Stereoscopic-Neoforge/issues"
+
+[[mods]]
+modId = "stereoscopic"
+version = "${version}"
+displayName = "StereoCraft: Stereoscopic 3D (NeoForge)"
+authors = "Mitchell Marx"
+description = '''
+Side-by-side (SBS) stereoscopic 3D rendering for 3D TVs, 3D monitors, and SBS-compatible displays. NeoForge 1.21.1 port.
+'''
+displayURL = "https://github.com/MitchellMarx/Stereoscopic-Neoforge"
+logoFile = "icon.png"
+side = "CLIENT"
+
+[[mixins]]
+config = "stereoscopic.mixins.json"
+
+[[mixins]]
+config = "stereoscopic-iris.mixins.json"
+
+[[dependencies.stereoscopic]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.228,22)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.stereoscopic]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.21.2)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.stereoscopic]]
+modId = "sodium"
+type = "required"
+versionRange = "[0.6.13,0.7)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.stereoscopic]]
+modId = "iris"
+type = "optional"
+versionRange = "[1.8.12,1.9)"
+ordering = "AFTER"
+side = "CLIENT"
