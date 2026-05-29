@@ -553,6 +553,20 @@ cd /c/CODE/Stereoscopic-Neoforge && ./gradlew test --no-daemon
 
 Expected: all 4 test classes pass (math, mode, options-IO, state).
 
+**Note on test classpath:** NeoForge's ModDevGradle does not propagate
+Minecraft's transitive Gson to the test classpath. If StereoOptionsIOTest
+fails with `NoClassDefFoundError: com/google/gson/JsonElement`, add to
+gradle.properties:
+
+    gson_version=2.11.0
+
+and to build.gradle.kts dependencies block:
+
+    testImplementation("com.google.code.gson:gson:${project.property("gson_version")}")
+
+Version 2.11.0 matches what NeoForge 21.1.228 ships at runtime; do not
+pin a different version.
+
 - [ ] **Step 6: Commit**
 
 ```bash
