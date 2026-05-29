@@ -1,0 +1,5 @@
+// No extra repositories beyond what gtnhsettingsconvention's includeWellKnownRepositories
+// provides. The GTNH Maven (which serves Angelica + GTNHLib) is included by default.
+repositories {
+    mavenLocal()
+}

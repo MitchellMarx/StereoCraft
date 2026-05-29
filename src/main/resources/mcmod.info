@@ -1,0 +1,13 @@
+[
+  {
+    "modid": "stereoscopic",
+    "name": "StereoCraft: Stereoscopic 3D",
+    "description": "Side-by-side stereoscopic 3D for Minecraft 1.7.10. Requires Angelica.",
+    "version": "${modVersion}",
+    "mcversion": "${minecraftVersion}",
+    "url": "",
+    "authorList": ["Mitchell Samora"],
+    "credits": "Ported from the stereo SBS feature on Angelica's stereo-sbs-2 branch.",
+    "dependencies": ["angelica", "gtnhlib"]
+  }
+]

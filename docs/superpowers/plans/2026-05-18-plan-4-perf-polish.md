@@ -4,7 +4,7 @@
 
 **Goal:** Final v0.1.0 work — Sodium 2nd-eye chunk-upload skip, Iris shadow-pass skip on 2nd eye, verify lwjgl3ify-3.0.17 SDL3 compat carried through from Plan 3's tip port, and confirm clean shutdown across all subsystems. After this plan ships green, v0.1.0 is feature-complete.
 
-**Architecture:** Two new external mixins (one into Angelica's Celeritas-Sodium `RenderGlobal`, one into Iris's `DeferredWorldRenderingPipeline`). Both gate behavior on `StereoState.INSTANCE.getCurrentEye() == Eye.RIGHT`. No new state classes.
+**Architecture:** See **Plan 1 "Porting principle"** for the canonical rule. Two new **External Mixins** (one into Angelica's Celeritas-Sodium `RenderGlobal`, one into Iris's `DeferredWorldRenderingPipeline`) port the two perf commits' modifications-to-Angelica-source as external `@Inject` redirects. Both gate behavior on `StereoState.INSTANCE.getCurrentEye() == Eye.RIGHT`. No new state classes.
 
 **Tech Stack:** Same as Plan 3.
 
@@ -68,6 +68,8 @@ javap -classpath "$ANGELICA_JAR" net.minecraft.client.renderer.RenderGlobal | gr
 Expected: `public void clipRenderersByFrustum(net.minecraft.client.renderer.culling.ICamera, float)`. If a remapping difference fires (`func_*` SRG name vs deobf name), use the SRG name in the `@Inject` target.
 
 ### Task 2: MixinRenderGlobal_StereoChunkSkip
+
+**Important — Angelica's `@Overwrite` collision:** Angelica's `mixins/early/celeritas/terrain/MixinRenderGlobal` uses `@Overwrite` on `clipRenderersByFrustum`. When we `@Inject(at=@At("HEAD"), cancellable=true)` on the same method, our injection lands at the start of the merged method body (which IS Angelica's overwrite body), so the HEAD-cancel works in principle — but the mixin AP may flag the overlap. Verify after `compileMixinJava`: scan the build log for "method already overwritten" / "no valid injection point" warnings. If Angelica's overwrite wins outright, raise our mixin's priority (`@Mixin(value = RenderGlobal.class, priority = 900)` — lower number = higher priority in Mixin) OR target Celeritas's BFS entry point one level deeper instead.
 
 **Files:**
 - Create: `C:\CODE\Stereoscopic-Angelica\src\mixin\java\com\mitchellmarx\stereoscopic\mixin\sodium\MixinRenderGlobal_StereoChunkSkip.java`
@@ -156,7 +158,7 @@ Both effects, plus the chunk-skip from Task 2, give the full sbs2 perf parity.
 git -C /c/CODE/Angelica-sbs2 show 936840f9 -- 'src/main/java/net/coderbot/iris/pipeline/DeferredWorldRenderingPipeline.java'
 ```
 
-The diff guards `if (shadowRenderTargets != null && !skipShadowClear)` — the `skipShadowClear` flag is set per-frame from `StereoState.INSTANCE.getCurrentEye() == Eye.RIGHT`. Identify the method containing this block (look at the surrounding lines for `glActiveTexture` and `final Vector4f emptyClearColor`) — likely `finalizeFrame` or `beginShadowRender`.
+The diff guards `if (shadowRenderTargets != null && !skipShadowClear)` — the `skipShadowClear` flag is set per-frame from `StereoState.INSTANCE.getCurrentEye() == Eye.RIGHT`. The enclosing method is `prepareRenderTargets` (verified against sbs2 source — the block at line ~1258 is preceded by `GLStateManager.glActiveTexture(GL13.GL_TEXTURE0)` then `final Vector4f emptyClearColor = new Vector4f(1.0F)`, both inside `private void prepareRenderTargets()`). Use `method = "prepareRenderTargets"` in the `@Inject`/`@WrapOperation` annotation.
 
 - [ ] **Step 2: Write the mixin**
 
@@ -195,11 +197,11 @@ public abstract class MixinDeferredWorldRenderingPipeline_ShadowSkip {
         }
     }
 
-    // Hunk 2: shadow-clear skip. The enclosing method is identified in Step 1 — substitute
-    // its name into method = "<SHADOW_CLEAR_METHOD>". The injection point is the FIELD-read
-    // of shadowRenderTargets right before the if-block that performs the clear.
+    // Hunk 2: shadow-clear skip. The enclosing method is prepareRenderTargets (resolved
+    // in Step 1). The injection point is the FIELD-read of shadowRenderTargets right
+    // before the if-block that performs the clear.
     @Inject(
-        method = "<SHADOW_CLEAR_METHOD>",
+        method = "prepareRenderTargets",
         at = @At(
             value = "FIELD",
             target = "Lnet/coderbot/iris/pipeline/DeferredWorldRenderingPipeline;shadowRenderTargets:Lnet/coderbot/iris/shadows/ShadowRenderTargets;",
@@ -227,7 +229,7 @@ The Step 2 `@Inject` shape may cancel too much (the whole enclosing method). If 
 
 ```java
 @WrapOperation(
-    method = "<SHADOW_CLEAR_METHOD>",
+    method = "prepareRenderTargets",
     at = @At(value = "FIELD",
              target = "Lnet/coderbot/iris/pipeline/DeferredWorldRenderingPipeline;shadowRenderTargets:Lnet/coderbot/iris/shadows/ShadowRenderTargets;",
              opcode = Opcodes.GETFIELD,
@@ -437,7 +439,7 @@ git -C /c/CODE/Stereoscopic-Angelica push --tags
 
 **Type consistency:** `StereoState.INSTANCE.isActive()` returns `boolean`, `getCurrentEye()` returns `StereoState.Eye`. Used identically in Tasks 2 and 3. Consistent with Plan 1's `StereoState` port.
 
-**Placeholders:** Task 3 contains `<SHADOW_CLEAR_METHOD>` — resolved by Step 1's `git show 936840f9 -- 'iris/pipeline/DeferredWorldRenderingPipeline.java'` reading. This is an instruction, not a "TBD".
+**Placeholders:** None remaining. Task 3's previous `<SHADOW_CLEAR_METHOD>` placeholder is resolved to `prepareRenderTargets` (verified against sbs2 source at line ~1258 of `DeferredWorldRenderingPipeline.java`).
 
 **Scope check:** Plan 4 is intentionally narrow — three small mixins (one already in Plan 2/3 verbatim port, two new in Plan 4) and two verification checkpoints. Anything not on this list is out of v0.1.0 scope and waits for v0.1.1+.
 

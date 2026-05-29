@@ -1,0 +1,27 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Mod runtime working dirs
+run/
+logs/
+
+# Test extracts
+.*_extract/
+.scratch/
+.tmp/
+
+# Local-only settings
+.claude/settings.local.json

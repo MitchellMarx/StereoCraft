@@ -4,7 +4,12 @@
 
 **Goal:** With Plan 1's SBS toggle working, layer on (1) full HUD/GUI duplication per eye, (2) Iris shaderpack support via external mixins into Angelica-bundled Iris classes, (3) hand-renderer per-eye depth, (4) achievement popup per-eye, (5) `TIMER`/`tickDelta` freeze between eye renders, (6) `ChromaticTooltips` re-arm between eyes' post events.
 
-**Architecture:** External mixins into Angelica's shaded Iris (`net.coderbot.iris.*`) and Minecraft 1.7.10 classes. Per-eye state is read from `StereoState.INSTANCE`. The per-eye `RenderTargets`, camera uniforms, matrix uniforms, and shadow-pass-skip changes that sbs2 makes inline in Iris's source are reproduced here as `@Inject`/`@Redirect` mixins.
+**Architecture:** See **Plan 1 "Porting principle"** for the canonical rule (port sbs2's `master...stereo-sbs-2` diff verbatim; NEW files copy whole, MODIFIED Angelica files apply via the most surgical external mechanism). For this plan specifically:
+
+- Iris classes (`net.coderbot.iris.*`) — shaded into published Angelica — are targeted via **External Mixins** (`@Inject`/`@Redirect`).
+- Minecraft 1.7.10 classes — same.
+- If any sbs2 commit in this plan modifies `Angelica/loading/{fml,rfb}` (transformer registration sites) or `Angelica/glsm/GLStateManager.java`, deliver via **our own** `StereoscopicCoreMod` (FML coremod) or `StereoscopicRfbPlugin` (RFB plugin) — both already exist after Plan 1 Phase 5b. Adding additional transformers means appending to the existing plugin classes, not creating new ones.
+- Per-eye state is read from `StereoState.INSTANCE` (Plan 1).
 
 **Tech Stack:** Same as Plan 1. Adds the Iris API surface — relies on `net.coderbot.iris.pipeline.HandRenderer`, `RenderTargets`, `CameraUniforms`, `MatrixUniforms`, `ViewportUniforms`, `IrisSamplers`, `DeferredWorldRenderingPipeline`, `WorldRenderingPipeline`, `CompositeRenderer`, `FinalPassRenderer`, `Iris` (all FQNs verified against Angelica-sbs2 in Task 1).
 
@@ -16,6 +21,8 @@
 - `ed335bff` — *freeze TIMER + tickDelta between eye renderWorld calls*
 
 **Prerequisites:** Plan 1 must be complete and the jar must build green. Verify with `./gradlew clean build && unzip -l build/libs/stereoscopic-*.jar | grep MixinEntityRenderer_Stereo`.
+
+**Phase 3 + Phase 4 code-review follow-ups** are now in Plan 1 Phase 5c (Tasks 23f–23k). Do not duplicate them here.
 
 ---
 
@@ -37,12 +44,13 @@
 | `…/mixin/iris/MixinFinalPassRenderer_PerEye.java` | sbs2 edit to `net/coderbot/iris/postprocess/FinalPassRenderer.java`, `fa3a63f4` |
 | `…/mixin/minecraft/MixinMinecraft_StereoAchievement.java` | port of `MixinMinecraft_StereoAchievement.java` from sbs2 (67 lines) |
 | `…/mixin/minecraft/MixinFMLCommonHandler_Stereo.java` | port of `MixinFMLCommonHandler_Stereo.java` from sbs2 (68 lines) — duplicates `RenderTickEvent.END` per-eye so WAILA-style overlays appear in both halves |
+| `…/mixin/angelica/MixinGLStateManager_StereoRemap.java` | external mixin into Angelica's `GLStateManager.glScissor` and `glViewport` — remaps to the current eye's region whenever `StereoState.isInGuiPass()` / `isInWorldPass()` is true. Replaces the sbs2 `StereoGLSMBridge`/`StereoHook` mechanism, which depended on hook surfaces only present in the abandoned `Angelica-sbs2` fork. Required before HUD/Iris work because vanilla and Iris code internally calls `glViewport(0,0,fullW,fullH)` to reset to full screen, which must remap to the eye region while a GUI/world pass is active. |
 
 **Modified in this plan:**
 
 | Path | Why |
 |---|---|
-| `…/resources/mixins.stereoscopic.json` | Add the 11 new mixin entries |
+| `…/resources/mixins.stereoscopic.json` | Add the 12 new mixin entries |
 | `…/mixin/minecraft/MixinEntityRenderer_Stereo.java` | Verify HUD/TIMER/ChromaticTooltips bits from the Plan 1 verbatim port are wired (no code change expected — Plan 1 ported the whole file) |
 
 ---
@@ -80,102 +88,98 @@ Append a line to `docs/superpowers/notes/v0.1.0-manual-test.md`:
 2026-05-18 Iris-target preflight: 10/10 classes found unrelocated in Angelica <version>. OK to proceed.
 ```
 
----
-
-## Phase 2 — Hand renderer per-eye depth
-
-### Task 2: Read the sbs2 HandRenderer edit
-
-**Files:** none (research)
-
-- [ ] **Step 1: View the exact diff**
-
-```bash
-git -C /c/CODE/Angelica-sbs2 show e4345194 -- 'src/main/java/net/coderbot/iris/pipeline/HandRenderer.java'
-```
-
-The diff adds two stereo-aware translation blocks:
-1. **Projection-space** offset of `sign * 0.07f` inside the method that builds the hand's projection matrix (look for the existing `// TODO: Anaglyph` comment with `0.07F`).
-2. **Modelview** offset of `getHandEyeOffset()` (`±0.1f * ipd/0.064`) inside the method that builds the hand's modelview (look for the `// TODO: Anaglyph` with `0.1F`).
-
-Identify the **exact method names** in HandRenderer that contain those `// TODO: Anaglyph` blocks. They are the `@Inject` targets for Task 3.
-
-### Task 3: MixinHandRenderer_StereoDepth
+### Task 1b: MixinGLStateManager_StereoRemap — external GLSM scissor/viewport remap
 
 **Files:**
-- Create: `C:\CODE\Stereoscopic-Angelica\src\mixin\java\com\mitchellmarx\stereoscopic\mixin\iris\MixinHandRenderer_StereoDepth.java`
+- Create: `C:\CODE\Stereoscopic-Angelica\src\mixin\java\com\mitchellmarx\stereoscopic\mixin\angelica\MixinGLStateManager_StereoRemap.java`
+- Modify: `C:\CODE\Stereoscopic-Angelica\src\main\resources\mixins.stereoscopic.json` — add `"angelica.MixinGLStateManager_StereoRemap"`
 
-- [ ] **Step 1: Write the file**
+**Context — why this task exists:** sbs2 added a `StereoHook` interface and `GLSMHooks.stereoHook` field inside Angelica, and registered a callback against it from `StereoGLSMBridge`. That mechanism doesn't exist in published Angelica `[2.1, 2.2)` and won't be added (this mod replaces Angelica-sbs entirely — see spec §"Overview"). The equivalent behavior must be achieved via external mixin into `GLStateManager`.
+
+**Responsibilities — three remaps the mixin must perform** (math ported from the removed Plan 1 `StereoGLSMBridge`):
+
+1. **`glScissor(x, y, w, h)` while `StereoState.isInGuiPass()`** — input is in full-screen pixels (the GUI thinks it's drawing into the whole window). Remap into the current eye's viewport region:
+    ```
+    vp = StereoState.INSTANCE.getEyeVp{X,Y,W,H}()
+    out.x = vp.x + x * vp.w / displayW
+    out.y = vp.y + y * vp.h / displayH
+    out.w = w     * vp.w / displayW
+    out.h = h     * vp.h / displayH
+    ```
+2. **`glViewport(0, 0, displayW, displayH)` while `StereoState.isInWorldPass()`** — Iris's `CompositeRenderer` and `FinalPassRenderer` reset to full-FB between shader phases. Remap to `(0, 0, irisFbWidth, irisFbHeight)` — currently identity, but keeps the Iris-side surface stable for future per-eye render-target sizing changes.
+3. **`glViewport(0, 0, displayW, displayH)` while `StereoState.isInGuiPass()`** — vanilla popup/HUD code resets to full screen as setup. Remap to the eye's `(eyeVpX, eyeVpY, eyeVpW, eyeVpH)`.
+
+Calls outside the gui-pass / world-pass windows pass through unchanged. Calls inside those windows whose `(x, y, w, h)` doesn't match the "reset to full display" pattern also pass through unchanged (the world-pass and gui-pass-viewport remaps only fire when the caller is trying to set the FULL screen — partial-screen viewport sets from inside the mixins already aim at the right region).
+
+- [ ] **Step 1: Inspect Angelica's `GLStateManager` to find the actual method signatures and call sites**
+
+```bash
+unzip -p "$ANGELICA_JAR" com/gtnewhorizons/angelica/glsm/GLStateManager.class | javap -p - | grep -E '(glScissor|glViewport)'
+```
+
+Capture the method signatures (parameter types, static vs instance). Then decide between `@Inject(at = @At("HEAD"), cancellable = true)` + `ci.cancel()` + call `GL11.glScissor` with remapped coords, vs `@Redirect` of the underlying `org.lwjgl.opengl.GL11.glScissor` call inside `GLStateManager`. **`@Inject` + cancellable is the cleaner pattern** — it lets us veto the original `glScissor`/`glViewport` and issue our own. Use `@Redirect` only if `@Inject` proves unworkable for some structural reason.
+
+- [ ] **Step 2: Write the mixin**
+
+Skeleton (fill in `<method-signature>` from Step 1):
 
 ```java
-package com.mitchellmarx.stereoscopic.mixin.iris;
+package com.mitchellmarx.stereoscopic.mixin.angelica;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.mitchellmarx.stereoscopic.core.StereoState;
-import net.coderbot.iris.pipeline.HandRenderer;
+import net.minecraft.client.Minecraft;
+import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Stereo-aware per-eye translations for the held item. Reproduces sbs2 commit e4345194's
- * inline edits to net.coderbot.iris.pipeline.HandRenderer as external @Inject mixins.
- *
- * Two translations:
- *   1. Projection-space:  ±0.07f (sign LEFT=-1, RIGHT=+1 — flipped vs modelview because
- *      the hand uses an inverted Z scale, DEPTH=0.125f).
- *   2. Modelview:         ±getHandEyeOffset() (≈ ±0.1f * ipd/0.064).
- */
-@Mixin(HandRenderer.class)
-public abstract class MixinHandRenderer_StereoDepth {
+@Mixin(value = GLStateManager.class, remap = false)
+public abstract class MixinGLStateManager_StereoRemap {
 
-    // Target the existing // TODO: Anaglyph block in the projection-matrix-build method.
-    // Replace <PROJECTION_METHOD> with the method name identified in Task 2 (the one that
-    // calls glScalef(1.0F, 1.0F, DEPTH) right before the // TODO: Anaglyph comment).
-    @Inject(
-        method = "<PROJECTION_METHOD>",
-        at = @At(value = "INVOKE",
-                 target = "Lcom/gtnewhorizons/angelica/glsm/GLStateManager;glScalef(FFF)V",
-                 ordinal = 0,
-                 shift = At.Shift.AFTER)
-    )
-    private void stereoscopic$applyHandProjectionOffset(CallbackInfo ci) {
-        if (!StereoState.INSTANCE.isActive()) return;
-        final float sign = StereoState.INSTANCE.isLeftEye() ? -1f
-            : (StereoState.INSTANCE.isRightEye() ? 1f : 0f);
-        if (sign != 0f) {
-            GLStateManager.glTranslatef(sign * 0.07f, 0f, 0f);
-        }
+    @Inject(method = "glScissor<method-signature-from-Step-1>",
+            at = @At("HEAD"), cancellable = true)
+    private static void stereoscopic$remapScissor(int x, int y, int width, int height, CallbackInfo ci) {
+        final StereoState st = StereoState.INSTANCE;
+        if (!st.isInGuiPass()) return;
+        final Minecraft mc = Minecraft.getMinecraft();
+        final int dw = mc.displayWidth, dh = mc.displayHeight;
+        if (dw <= 0 || dh <= 0) return;
+        final int vx = st.getEyeVpX(), vy = st.getEyeVpY(), vw = st.getEyeVpW(), vh = st.getEyeVpH();
+        GL11.glScissor(vx + (int)((long) x * vw / dw),
+                       vy + (int)((long) y * vh / dh),
+                       (int)((long) width  * vw / dw),
+                       (int)((long) height * vh / dh));
+        ci.cancel();
     }
 
-    // Target the modelview-build method right after the inner glLoadIdentity().
-    // Replace <MODELVIEW_METHOD> with the method name identified in Task 2 (the one that
-    // calls hurtCameraEffect right after the // TODO: Anaglyph comment).
-    @Inject(
-        method = "<MODELVIEW_METHOD>",
-        at = @At(value = "INVOKE",
-                 target = "Lcom/gtnewhorizons/angelica/glsm/GLStateManager;glLoadIdentity()V",
-                 ordinal = 0,
-                 shift = At.Shift.AFTER)
-    )
-    private void stereoscopic$applyHandModelviewOffset(CallbackInfo ci) {
-        if (!StereoState.INSTANCE.isActive()) return;
-        final float dx = StereoState.INSTANCE.getHandEyeOffset();
-        if (dx != 0f) {
-            GLStateManager.glTranslatef(dx, 0f, 0f);
+    @Inject(method = "glViewport<method-signature-from-Step-1>",
+            at = @At("HEAD"), cancellable = true)
+    private static void stereoscopic$remapViewport(int x, int y, int width, int height, CallbackInfo ci) {
+        final StereoState st = StereoState.INSTANCE;
+        final Minecraft mc = Minecraft.getMinecraft();
+        if (mc == null) return;
+        final int dw = mc.displayWidth, dh = mc.displayHeight;
+        if (x != 0 || y != 0 || width != dw || height != dh) return;
+        if (st.isInWorldPass()) {
+            GL11.glViewport(0, 0, st.irisFbWidth(dw), st.irisFbHeight(dh));
+            ci.cancel();
+            return;
+        }
+        if (st.isInGuiPass()) {
+            GL11.glViewport(st.getEyeVpX(), st.getEyeVpY(), st.getEyeVpW(), st.getEyeVpH());
+            ci.cancel();
         }
     }
 }
 ```
 
-- [ ] **Step 2: Resolve the two `<…_METHOD>` placeholders**
+- [ ] **Step 3: Add to mixin config**
 
-From Task 2's reading of the sbs2 diff, find the surrounding method declarations. They will be private/package-private methods on `HandRenderer`. Substitute the resolved names. The shape of the surrounding code (the `glScalef(1.0F, 1.0F, DEPTH)` and `glLoadIdentity()` anchors) is what the `@At` targets latch onto — those anchors must match the live HandRenderer in the pinned Angelica.
-
-- [ ] **Step 3: Add to mixins.stereoscopic.json**
-
-Edit `src/main/resources/mixins.stereoscopic.json` and add `"iris.MixinHandRenderer_StereoDepth"` to the `"client"` array.
+```json
+"angelica.MixinGLStateManager_StereoRemap"
+```
 
 - [ ] **Step 4: Compile**
 
@@ -183,14 +187,65 @@ Edit `src/main/resources/mixins.stereoscopic.json` and add `"iris.MixinHandRende
 ./gradlew compileMixinJava
 ```
 
-If the anchor `target` strings don't match the actual HandRenderer bytecode, RFG's mixin AP reports the mismatched descriptor. Adjust the FQN slashes (`/`) and signature (`(FFF)V`) to match.
-
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /c/CODE/Stereoscopic-Angelica add src/mixin/java/com/mitchellmarx/stereoscopic/mixin/iris/MixinHandRenderer_StereoDepth.java src/main/resources/mixins.stereoscopic.json
-git -C /c/CODE/Stereoscopic-Angelica commit -m "feat(mixin/iris): per-eye projection + modelview offsets on HandRenderer"
+git -C /c/CODE/Stereoscopic-Angelica add src/mixin/java/com/mitchellmarx/stereoscopic/mixin/angelica/MixinGLStateManager_StereoRemap.java src/main/resources/mixins.stereoscopic.json
+git -C /c/CODE/Stereoscopic-Angelica commit -m "feat(mixin): GLStateManager scissor/viewport remap during stereo gui/world pass"
 ```
+
+> **Mouse-coord remap responsibility (sbs2 bridge item 4) is NOT in this mixin.** sbs2's `stereoMouseGetX`/`Y` lived next to the GLSM hooks because they shared a runtime call site. In this mod, mouse coords during stereo are handled by Plan 3's cursor backend reading directly from `StereoCursor` / `CursorBackend`. No GLSM-side intervention is needed.
+
+---
+
+## Phase 2 — Hand renderer per-eye depth
+
+### Task 2: Read the sbs2 HandRenderer edit — **DONE**
+
+**Files:** none (research)
+
+The canonical state (`git diff master...stereo-sbs-2 -- 'src/main/java/net/coderbot/iris/pipeline/HandRenderer.java'`) differs from the historical commit `e4345194` that originally added the stereo translations. Cumulative state:
+
+- **Projection-space offset: dropped.** sbs2 originally added `sign * 0.07f`; a later commit removed it (the value was tuned for red/cyan glasses, not SBS — at the hand's close camera distance it produced hundreds of pixels of un-convergent per-eye disparity). HEAD has only an explanatory comment at that location.
+- **Modelview offset: uses `StereoState.getEyeOffset()`** (ipd/2, same as world geometry), not the originally-planned `getHandEyeOffset()` (`±0.1f * ipd/0.064`, the vanilla anaglyph value). Sharing the world's per-eye offset keeps the held item's disparity consistent with surrounding world geometry instead of flat-at-screen-depth.
+
+Both edits live inside one private method: **`setupGlState(RenderGlobal, Camera, float)`**.
+
+### Task 3: MixinHandRenderer_StereoDepth — **DONE at commit `31c919e`**
+
+**Files:**
+- Created: `src/mixin/java/com/mitchellmarx/stereoscopic/mixin/iris/MixinHandRenderer_StereoDepth.java`
+- Modified: `src/main/resources/mixins.stereoscopic.json` — added `"iris.MixinHandRenderer_StereoDepth"`
+
+Shipped state (single `@Inject`, modelview-only, mirroring sbs2 HEAD):
+
+```java
+@Mixin(value = HandRenderer.class, remap = false)
+public abstract class MixinHandRenderer_StereoDepth {
+
+    @Inject(
+        method = "setupGlState",
+        at = @At(
+            value = "INVOKE",
+            target = "Lcom/gtnewhorizons/angelica/glsm/GLStateManager;glLoadIdentity()V",
+            ordinal = 1,
+            shift = At.Shift.AFTER
+        )
+    )
+    private void stereoscopic$applyHandModelviewOffset(CallbackInfo ci) {
+        if (!StereoState.INSTANCE.isActive()) return;
+        final float dx = StereoState.INSTANCE.getEyeOffset();
+        if (dx != 0f) {
+            GLStateManager.glTranslatef(dx, 0f, 0f);
+        }
+    }
+}
+```
+
+Key choices:
+- `ordinal = 1` on `glLoadIdentity` — the first `glLoadIdentity` is the PROJECTION-mode reset (where the dropped projection offset would have gone); the second is the MODELVIEW-mode reset, which is our anchor.
+- `remap = false` on the `@Mixin` annotation — `HandRenderer` is an Iris class, java-side, not in the searge mapping. Without this the AP fails with "Unable to locate obfuscation mapping for @Inject target setupGlState".
+- No projection-space `@Inject` — matches sbs2 HEAD's "disabled, comment-only" state.
 
 ---
 
@@ -441,8 +496,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * EntityRenderer.updateCameraAndRender block — outside every stereo redirect. The popup's own
  * setup resets the GL viewport to the full display each call, so left alone it draws once at the
  * top-right of the full window and only one eye sees it. Redirect the call and post it per eye,
- * with StereoState.enterGuiPass active so the GLSM bridge can route the inner full-FB viewport
- * reset to the current eye's region.
+ * with StereoState.enterGuiPass active so the MixinGLStateManager_StereoRemap mixin (Task 1b)
+ * routes the popup's internal full-FB viewport reset to the current eye's region.
  */
 @Mixin(value = Minecraft.class, priority = 1100)
 public class MixinMinecraft_StereoAchievement {
@@ -598,6 +653,91 @@ git -C /c/CODE/Stereoscopic-Angelica add src/mixin/java/com/mitchellmarx/stereos
 git -C /c/CODE/Stereoscopic-Angelica commit -m "feat(mixin): duplicate RenderTickEvent.END per-eye (WAILA-style overlay support)"
 ```
 
+### Task 13c: MixinEntityRenderer_StereoTimerFreeze — freeze TIMER/tickDelta on RIGHT eye
+
+**Reference port source:** sbs2 commit `ed335bff` modifies `src/mixin/java/com/gtnewhorizons/angelica/mixins/early/shaders/MixinEntityRenderer.java` (+8/-2). It adds a guard inside Angelica's existing `iris$beginRender` injection (HEAD of `EntityRenderer.renderWorld(FJ)`) that skips the per-frame `setTickDelta(...)` and `SystemTimeUniforms.TIMER.beginFrame(nanoTime)` calls when `StereoState.getCurrentEye() == Eye.RIGHT`. `SystemTimeUniforms.COUNTER.beginFrame()` stays unconditional.
+
+**Delivery mechanism:** External `@Mixin(EntityRenderer.class)` with two `@Redirect`s at the same `INVOKE` call sites as Angelica's mixin. We can't @Inject into Angelica's existing `@Inject` body, but we can @Redirect the specific call instructions inside `renderWorld(FJ)` regardless of which mixin emitted them — mixin merges both into a single class transform.
+
+**Files:**
+- Create: `C:\CODE\Stereoscopic-Angelica\src\mixin\java\com\mitchellmarx\stereoscopic\mixin\minecraft\MixinEntityRenderer_StereoTimerFreeze.java`
+- Modify: `C:\CODE\Stereoscopic-Angelica\src\main\resources\mixins.stereoscopic.json` — add `"minecraft.MixinEntityRenderer_StereoTimerFreeze"` to client array (alphabetical, after `MixinEntityRenderer_Stereo`)
+
+- [ ] **Step 1: Identify exact Iris FQNs**
+
+```bash
+git -C /c/CODE/Angelica-sbs2 show ed335bff -- 'src/mixin/java/com/gtnewhorizons/angelica/mixins/early/shaders/MixinEntityRenderer.java'
+```
+
+Capture the FQNs for `CapturedRenderingState.setTickDelta(F)V` and `SystemTimeUniforms$Timer.beginFrame(J)V` (the inner class). Verify they exist in Angelica's published Iris by checking `Angelica-2.1.23-dev.jar` (cache path):
+```bash
+unzip -l "$(find ~/.gradle/caches/modules-2/files-2.1/com.github.GTNewHorizons/Angelica -name '*-dev.jar' -not -name '*-sources*' | head -1)" | grep -E '(CapturedRenderingState|SystemTimeUniforms)'
+```
+
+- [ ] **Step 2: Write the mixin**
+
+```java
+package com.mitchellmarx.stereoscopic.mixin.minecraft;
+
+import com.mitchellmarx.stereoscopic.core.StereoState;
+import net.coderbot.iris.uniforms.CapturedRenderingState;
+import net.coderbot.iris.uniforms.SystemTimeUniforms;
+import net.minecraft.client.renderer.EntityRenderer;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Redirect;
+
+/**
+ * Port of sbs2 commit ed335bff. Skips setTickDelta and TIMER.beginFrame on the RIGHT
+ * eye so they freeze to the LEFT eye's snapshot. COUNTER (in Angelica's shaders mixin
+ * alongside these two calls) ticks unconditionally — not redirected.
+ */
+@Mixin(value = EntityRenderer.class, priority = 1050)
+public abstract class MixinEntityRenderer_StereoTimerFreeze {
+
+    @Redirect(
+        method = "renderWorld(FJ)V",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/coderbot/iris/uniforms/CapturedRenderingState;setTickDelta(F)V"
+        )
+    )
+    private void stereoscopic$freezeTickDeltaOnRightEye(CapturedRenderingState state, float partialTicks) {
+        if (StereoState.INSTANCE.getCurrentEye() == StereoState.Eye.RIGHT) return;
+        state.setTickDelta(partialTicks);
+    }
+
+    @Redirect(
+        method = "renderWorld(FJ)V",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/coderbot/iris/uniforms/SystemTimeUniforms$Timer;beginFrame(J)V"
+        )
+    )
+    private void stereoscopic$freezeTimerOnRightEye(SystemTimeUniforms.Timer timer, long nanoTime) {
+        if (StereoState.INSTANCE.getCurrentEye() == StereoState.Eye.RIGHT) return;
+        timer.beginFrame(nanoTime);
+    }
+}
+```
+
+If `CapturedRenderingState` is a singleton accessed via `CapturedRenderingState.INSTANCE.setTickDelta(...)` rather than a static call, the receiver type of the `@Redirect` adapts accordingly — verify against the actual sbs2 diff.
+
+- [ ] **Step 3: Register and compile**
+
+```bash
+./gradlew compileMixinJava
+```
+
+Add the mixin entry to `mixins.stereoscopic.json`'s client array.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git -C /c/CODE/Stereoscopic-Angelica add src/mixin/java/com/mitchellmarx/stereoscopic/mixin/minecraft/MixinEntityRenderer_StereoTimerFreeze.java src/main/resources/mixins.stereoscopic.json
+git -C /c/CODE/Stereoscopic-Angelica commit -m "feat(mixin): freeze TIMER + tickDelta on RIGHT eye (port ed335bff)"
+```
+
 ---
 
 ## Phase 5 — Verify HUD/TIMER/ChromaticTooltips bits from Plan 1's MixinEntityRenderer_Stereo
@@ -607,16 +747,16 @@ git -C /c/CODE/Stereoscopic-Angelica commit -m "feat(mixin): duplicate RenderTic
 **Files:**
 - Verify only: `…/mixin/minecraft/MixinEntityRenderer_Stereo.java`
 
-The Plan 1 task that ported MixinEntityRenderer_Stereo did so verbatim — meaning all the injection points sbs2 added in commits `7594da2a` (HUD/GUI), `5b771503` (cursor/scissor/event dup), `ed335bff` (TIMER/tickDelta freeze), and `e659263b` (ChromaticTooltips re-arm) should already be present in the ported file.
+The Plan 1 task that ported MixinEntityRenderer_Stereo did so verbatim — meaning all the injection points sbs2 added in commits `7594da2a` (HUD/GUI), `5b771503` (cursor/scissor/event dup), and `e659263b` (ChromaticTooltips re-arm) should already be present in the ported file. `ed335bff` (TIMER/tickDelta freeze) lives in Angelica's shaders mixin, not in `MixinEntityRenderer_Stereo`, and is handled by Task 13c (`MixinEntityRenderer_StereoTimerFreeze`) — not here.
 
 - [ ] **Step 1: Verify the methods exist by grep**
 
 ```bash
-grep -n -E '(stereoscopic\$|enterGuiPass|exitGuiPass|enterWorldPass|exitWorldPass|TIMER|ChromaticTooltips)' \
+grep -n -E '(stereoscopic\$|enterGuiPass|exitGuiPass|enterWorldPass|exitWorldPass|ChromaticTooltips)' \
     /c/CODE/Stereoscopic-Angelica/src/mixin/java/com/mitchellmarx/stereoscopic/mixin/minecraft/MixinEntityRenderer_Stereo.java
 ```
 
-Expected: matches for each of the bracketed terms. If `TIMER` doesn't appear: the freeze hook may need a separate port — see Step 2.
+Expected: matches for each of the bracketed terms (note: `TIMER` is NOT one of them — TIMER freeze lives in Task 13c, not in this file).
 
 - [ ] **Step 2: If any hook is missing, port it now**
 
@@ -678,14 +818,21 @@ Expected entries (Plan 1 + Plan 2):
 
 ### Task 16: Manual smoke test in Prism
 
-Following the spec's manual test plan items B (SBS on), C (off), D (slider), E (Iris shaderpack), G (HUD duplication including F3 + achievement popup):
+**This is the test Plan 1 Task 26 deferred.** Plan 1's smoke test covered the UI-level toggle + sky/HUD splitting. This task covers the world-chunk-render path, which depends on the per-eye Iris RenderTargets / DeferredWorldRenderingPipeline / Composite/Final pass mixins shipped in this plan.
+
+Following the spec's manual test plan items B (SBS on), C (off), D (slider), E (Iris shaderpack), G (HUD duplication including F3 + achievement popup), plus the carry-forward from Plan 1 Task 26:
 
 - [ ] **Step 1**: Deploy via `./gradlew build`.
-- [ ] **Step 2**: Launch profile.
-- [ ] **Step 3**: Exercise the test items.
-- [ ] **Step 4**: Update `docs/superpowers/notes/v0.1.0-manual-test.md` with results.
+- [ ] **Step 2**: Launch the GTNH-daily profile.
+- [ ] **Step 3**: Exercise the test items below. **Tick-box ON, no shaderpack loaded:**
+  1. Sky AND HUD AND **world chunk geometry** all split L/R. Each half shows the world from the per-eye camera position (verify by toggling IPD — geometry shifts).
+  2. No extreme-edge / narrow-strip artifacts in the chunk area. Each eye fills its half cleanly.
+  3. IPD slider adjusts visible parallax of distant terrain.
+  4. Tick OFF → returns to clean full-screen mono.
+- [ ] **Step 4**: Repeat with a shaderpack loaded (Complementary Reimagined or BSL). World, sky, HUD, hand all split per-eye with shader effects intact.
+- [ ] **Step 5**: Update `docs/superpowers/notes/v0.1.0-manual-test.md` with results.
 
-If anything red: do not advance to Plan 3 until Plan 2 is green.
+If world chunks still render full-screen mono (or with narrow-strip artifacts) under either configuration, the per-eye RenderTargets port (Tasks 4–11) is incomplete or wrong. Do not advance to Plan 3 until both shader-on and shader-off cases visibly split.
 
 ---
 
@@ -696,7 +843,7 @@ If anything red: do not advance to Plan 3 until Plan 2 is green.
 - [x] C — Hand renderer per-eye depth (Task 3).
 - [x] D — Iris shaderpack support (Tasks 4–11).
 - [x] I — Achievement popup duplicated across eyes (Task 13).
-- [x] J — TIMER / tickDelta freeze (Plan 1 port, verified in Task 14).
+- [x] J — TIMER / tickDelta freeze (Task 13c — external mixin into Angelica's shaders path).
 - [x] K — ChromaticTooltips re-arm (Plan 1 port, verified in Task 14).
 
 **Type consistency:** `IPerEyeRenderTargets` (Task 4) introduces `stereoscopic$setActiveEye(int)` / `stereoscopic$getActiveEye()`. Task 10's `MixinDeferredWorldRenderingPipeline_PerEye` calls those names. Consistent.
