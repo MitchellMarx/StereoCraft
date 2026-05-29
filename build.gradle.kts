@@ -54,7 +54,7 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.joml:joml:1.10.5")
+    testImplementation("org.joml:joml:${project.property("joml_version")}")
 }
 
 tasks.processResources {

@@ -471,6 +471,19 @@ cd /c/CODE/Stereoscopic-Neoforge && ./gradlew test --no-daemon
 
 Expected: All tests pass. If a test fails, the cause is either a JUnit version mismatch or a missing import — fix at the source, do not modify the test.
 
+**Note on test classpath:** NeoForge's ModDevGradle does not propagate
+Minecraft's transitive JOML to the test classpath. If test compilation
+fails with `org.joml.Matrix4f` (or similar) not found, add to gradle.properties:
+
+    joml_version=1.10.8
+
+and to build.gradle.kts dependencies block:
+
+    testImplementation("org.joml:joml:${project.property("joml_version")}")
+
+Version 1.10.8 matches what NeoForge 21.1.228 ships at runtime; do not
+pin a different version.
+
 - [ ] **Step 5: Commit**
 
 ```bash
