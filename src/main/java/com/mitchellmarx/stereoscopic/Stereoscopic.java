@@ -2,10 +2,10 @@ package com.mitchellmarx.stereoscopic;
 
 import com.mitchellmarx.stereoscopic.core.StereoOptions;
 import com.mitchellmarx.stereoscopic.cursor.StereoCursor;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.api.distmarker.Dist;
 
 @Mod(value = Stereoscopic.MOD_ID, dist = Dist.CLIENT)
 public final class Stereoscopic {
