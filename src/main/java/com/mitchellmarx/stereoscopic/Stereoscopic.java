@@ -3,6 +3,7 @@ package com.mitchellmarx.stereoscopic;
 import com.mitchellmarx.stereoscopic.core.StereoOptions;
 import com.mitchellmarx.stereoscopic.cursor.StereoCursor;
 import com.mitchellmarx.stereoscopic.gui.StereoKeybindings;
+import com.mitchellmarx.stereoscopic.gui.sodium.SodiumOptionsPageIntegration;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
@@ -25,6 +26,7 @@ public final class Stereoscopic {
         event.enqueueWork(() -> {
             StereoOptions.INSTANCE.load();
             StereoCursor.start();
+            SodiumOptionsPageIntegration.tryRegister();
             LOG.info("Stereoscopic initialized");
             ModList.get().getModContainerById("iris")
                 .ifPresent(c -> LOG.info("Iris detected: version={}",

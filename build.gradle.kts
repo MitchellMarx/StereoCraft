@@ -56,6 +56,22 @@ dependencies {
     // j-shelfwood/voxy-neoforge excludes iris from its jar. Re-add as
     // compileOnly when a usable Voxy + Iris combination is sourced.
 
+    // SodiumOptionsAPI + Forgified Fabric API: optional soft deps from the
+    // Aeronautics modpack (no Modrinth maven for SOAPI). SOAPI's OptionGUIConstruction.EVENT
+    // is a net.fabricmc.fabric.api.event.Event which lives in forgified-fabric-api.
+    val soapiJarPath = (project.findProperty("stereoscopic.soapiJar") as String?)
+        ?: "C:/Users/felix/curseforge/minecraft/Instances/All of Create - Aeronautics (3)/mods/sodiumoptionsapi-neoforge-1.0.10-1.21.1.jar"
+    // fabric-api-base is shipped jarjar'd inside forgified-fabric-api.
+    // We extracted it once to libs/ so compileOnly can resolve net.fabricmc.fabric.api.event.Event
+    // without unpacking the parent each build. The actual classes come from forgified-fabric-api
+    // at runtime.
+    val soapiJar = file(soapiJarPath)
+    val fabricApiBaseJar = file("libs/fabric-api-base-0.4.42.jar")
+    if (soapiJar.isFile) compileOnly(files(soapiJar))
+        else logger.lifecycle("SOAPI compileOnly skipped: $soapiJarPath not found.")
+    if (fabricApiBaseJar.isFile) compileOnly(files(fabricApiBaseJar))
+        else logger.lifecycle("fabric-api-base compileOnly skipped: libs/fabric-api-base-0.4.42.jar not found.")
+
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.joml:joml:${project.property("joml_version")}")
