@@ -99,10 +99,18 @@ public final class PerEyeRenderer {
             PerEyeRenderTargetHooks.setActiveEye(s.currentEyeIndex());
         }
         ViewportMath.Rect r = ViewportMath.eyeRect(eye, StereoOptions.INSTANCE.mode, fbW, fbH);
-        viewportRaw(r.x(), r.y(), r.w(), r.h());
-        scissorRaw(r.x(), r.y(), r.w(), r.h());
-        // No RenderSystem.enableScissorForRenderTypeDraws in 1.21.1 — see
-        // disableScissor comment in runForEachEye above.
+        // WORLD: set viewport/scissor to the eye-rect of main FB. (When scratch
+        // FB is active the world wrap immediately overrides to full-FB viewport
+        // for the duration of renderLevel — see MixinGameRenderer.)
+        // GUI: leave viewport/scissor at whatever MC set up (full window).
+        // The HUD wraps use GuiGraphics.pose() compression to land in the
+        // correct eye-half; combining viewport-half AND pose-half would
+        // double-compress to 1/4 width. Mirrors the Fabric mod's approach
+        // (MixinGuiRenderer relies on pose-stack compression, not viewport).
+        if (pass == Pass.WORLD) {
+            viewportRaw(r.x(), r.y(), r.w(), r.h());
+            scissorRaw(r.x(), r.y(), r.w(), r.h());
+        }
         switch (pass) {
             case WORLD -> s.enterWorldPass(r.x(), r.y(), r.w(), r.h());
             case GUI   -> s.enterGuiPass(r.x(), r.y(), r.w(), r.h());
