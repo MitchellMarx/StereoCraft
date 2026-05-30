@@ -3,7 +3,14 @@
     "minVersion": "0.8",
     "package": "com.mitchellmarx.stereoscopic.mixin",
     "compatibilityLevel": "JAVA_21",
-    "client": [],
+    "client": [
+        "minecraft.MixinMinecraftClient",
+        "minecraft.MixinGameRenderer",
+        "minecraft.MixinRenderSystem",
+        "minecraft.MixinGlStateManager",
+        "minecraft.CameraAccessor",
+        "minecraft.MouseAccessor"
+    ],
     "mixins": [],
     "injectors": { "defaultRequire": 1 }
 }
