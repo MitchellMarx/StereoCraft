@@ -106,6 +106,12 @@ public abstract class MixinGameRenderer {
         }
         PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
             original.call(self, graphics, delta);
+            // GuiGraphics batches draws into a deferred MultiBufferSource that
+            // doesn't flush until the GameRenderer.render() epilogue. Without
+            // forcing a flush HERE, both eye iterations accumulate vertices
+            // into the same buffer and only the final viewport (full window)
+            // is in effect when the GPU submission happens — HUD renders mono.
+            graphics.flush();
         });
     }
 
