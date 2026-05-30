@@ -14,6 +14,7 @@ import net.irisshaders.iris.targets.RenderTargets;
 import org.joml.Vector2i;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -50,8 +51,10 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
     @Shadow @Final private List<GlFramebuffer> ownedFramebuffers;
     @Shadow @Final private GlFramebuffer noTranslucentsDestFb;
     @Shadow @Final private GlFramebuffer noHandDestFb;
-    @Shadow private DepthTexture noTranslucents;
-    @Shadow private DepthTexture noHand;
+    // Iris 1.8.12 declares these final; @Mutable strips the final modifier
+    // at mixin apply time so per-eye field swaps don't IllegalAccessError.
+    @Mutable @Shadow private DepthTexture noTranslucents;
+    @Mutable @Shadow private DepthTexture noHand;
     @Shadow private int currentDepthTexture;
     @Shadow private DepthBufferFormat currentDepthFormat;
     @Shadow private int cachedWidth;
