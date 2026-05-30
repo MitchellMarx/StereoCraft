@@ -31,7 +31,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = GameRenderer.class, priority = 2000)
 public abstract class MixinGameRenderer {
 
-    @Shadow @Final private Minecraft minecraft;
+    // GameRenderer.minecraft is package-private final in MC 1.21.1, not private.
+    @Shadow @Final Minecraft minecraft;
 
     /** True once we've forced Iris's pipeline to rebuild after first stereo activation. */
     private static boolean stereoscopic$irisRebuiltForStereo = false;

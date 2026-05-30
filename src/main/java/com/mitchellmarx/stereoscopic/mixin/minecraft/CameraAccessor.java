@@ -15,5 +15,9 @@ import org.spongepowered.asm.mixin.gen.Invoker;
  */
 @Mixin(Camera.class)
 public interface CameraAccessor {
-    @Invoker("setPosition") void stereoscopic$setPos(Vec3 pos);
+    // Explicit descriptor disambiguates: Camera.setPosition has two overloads
+    // in MC 1.21.1 — (DDD)V and (Lnet/minecraft/world/phys/Vec3;)V. Pick the
+    // Vec3 one explicitly.
+    @Invoker("setPosition(Lnet/minecraft/world/phys/Vec3;)V")
+    void stereoscopic$setPos(Vec3 pos);
 }
