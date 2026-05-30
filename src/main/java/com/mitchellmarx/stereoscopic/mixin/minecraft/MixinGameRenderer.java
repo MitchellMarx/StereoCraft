@@ -113,7 +113,7 @@ public abstract class MixinGameRenderer {
      * {@code v' = T*S*v = scale-then-translate}.
      */
     @Unique
-    private static void stereoscopic$perEyeGuiTransform(net.minecraft.client.gui.GuiGraphics graphics) {
+    private static void applyPerEyeGuiTransform(net.minecraft.client.gui.GuiGraphics graphics) {
         StereoState s = StereoState.INSTANCE;
         int fbW = s.getFrameFbW();
         // RIGHT half: shift to fbW/2..fbW. Apply translate before scale so v' = T*S*v.
@@ -124,11 +124,11 @@ public abstract class MixinGameRenderer {
     }
 
     @Unique
-    private static void stereoscopic$runPerEyeGui(net.minecraft.client.gui.GuiGraphics graphics, Runnable body) {
+    private static void runPerEyeGui(net.minecraft.client.gui.GuiGraphics graphics, Runnable body) {
         if (!StereoState.INSTANCE.isActive()) { body.run(); return; }
         PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
             graphics.pose().pushPose();
-            stereoscopic$perEyeGuiTransform(graphics);
+            applyPerEyeGuiTransform(graphics);
             body.run();
             graphics.flush();
             graphics.pose().popPose();
@@ -139,7 +139,7 @@ public abstract class MixinGameRenderer {
                                          net.minecraft.client.gui.GuiGraphics graphics,
                                          DeltaTracker delta,
                                          Operation<Void> original) {
-        stereoscopic$runPerEyeGui(graphics, () -> original.call(self, graphics, delta));
+        runPerEyeGui(graphics, () -> original.call(self, graphics, delta));
     }
 
     /**
@@ -155,7 +155,7 @@ public abstract class MixinGameRenderer {
                                             net.minecraft.client.gui.GuiGraphics graphics,
                                             int mouseX, int mouseY, float partialTick,
                                             Operation<Void> original) {
-        stereoscopic$runPerEyeGui(graphics, () -> original.call(screen, graphics, mouseX, mouseY, partialTick));
+        runPerEyeGui(graphics, () -> original.call(screen, graphics, mouseX, mouseY, partialTick));
     }
 
     /**
@@ -170,7 +170,7 @@ public abstract class MixinGameRenderer {
                                              net.minecraft.client.gui.GuiGraphics graphics,
                                              int mouseX, int mouseY, float partialTick,
                                              Operation<Void> original) {
-        stereoscopic$runPerEyeGui(graphics, () -> original.call(self, graphics, mouseX, mouseY, partialTick));
+        runPerEyeGui(graphics, () -> original.call(self, graphics, mouseX, mouseY, partialTick));
     }
 
     /**
@@ -184,7 +184,7 @@ public abstract class MixinGameRenderer {
     private void stereoscopic$perEyeToasts(net.minecraft.client.gui.components.toasts.ToastComponent self,
                                             net.minecraft.client.gui.GuiGraphics graphics,
                                             Operation<Void> original) {
-        stereoscopic$runPerEyeGui(graphics, () -> original.call(self, graphics));
+        runPerEyeGui(graphics, () -> original.call(self, graphics));
     }
 
     /**
