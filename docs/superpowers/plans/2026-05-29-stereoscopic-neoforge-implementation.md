@@ -1132,7 +1132,10 @@ git -C /c/CODE/Stereoscopic-Neoforge commit -m "feat(cursor): port Windows curso
 
 ---
 
-### Task 17: Sodium options page — `StereoOptionsPage`
+### Task 17: Sodium options page — `StereoOptionsPage` — **DEFERRED to v0.1.x**
+
+**Why deferred (2026-05-29):** Sodium 0.6 (the Aeronautics modpack version) has no third-party options-page API — that mechanism arrived in Sodium 0.7+ via `sodium:config_api_user`. The modpack's `sodiumoptionsapi-neoforge` add-on provides this missing API, but coupling our mod to it would make it modpack-specific (failing on Sodium 0.6 installs without sodiumoptionsapi). For v0.1.0, settings are file-based at `config/stereoscopic-options.json` — the JSON format round-trips cleanly and the file is created on first launch with defaults. Re-enable when one of: (1) Aeronautics updates to Sodium 0.7+, (2) we accept sodiumoptionsapi as a soft compileOnly dep with runtime detect, (3) we ship our own standalone-screen UI accessed via a keybind.
+
 
 The in-game options UI. Registered through Sodium 0.6's options-API entry point.
 
