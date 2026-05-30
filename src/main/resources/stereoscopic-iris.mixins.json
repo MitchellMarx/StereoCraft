@@ -10,7 +10,9 @@
         "MixinShadowRenderer",
         "MixinIrisRenderingPipeline",
         "MixinIrisLodRenderProgram",
-        "MixinDHCompat"
+        "MixinDHCompat",
+        "MixinRenderTargets",
+        "MixinFinalPassRenderer"
     ],
     "mixins": [],
     "injectors": { "defaultRequire": 0 }
