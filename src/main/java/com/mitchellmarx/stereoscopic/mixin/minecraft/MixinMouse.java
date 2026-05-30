@@ -17,15 +17,17 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  * <p>{@code @ModifyArg} after sensitivity scaling + {@code invertMouseX}
  * negation, so a simple 0.5 multiply preserves sign.
  *
- * <p>Mojang names for 1.21.1: {@code MouseHandler.turnPlayer()} calls
- * {@code LocalPlayer.turn(double, double)}. (Yarn: Mouse.updateMouse(D)
- * calling ClientPlayerEntity.changeLookDirection(DD).)
+ * <p>Mojang names for 1.21.1: {@code MouseHandler.turnPlayer(double)} is
+ * private, called from {@code handleAccumulatedMovement()} with the elapsed
+ * time delta; inside, {@code accumulatedDX}/{@code accumulatedDY} are scaled
+ * by sensitivity and {@code minecraft.player.turn(dx, dy)} is called.
+ * (Yarn: Mouse.updateMouse(D) calling ClientPlayerEntity.changeLookDirection(DD).)
  */
 @Mixin(MouseHandler.class)
 public abstract class MixinMouse {
 
     @ModifyArg(
-        method = "turnPlayer()V",
+        method = "turnPlayer(D)V",
         at = @At(value = "INVOKE",
                  target = "Lnet/minecraft/client/player/LocalPlayer;turn(DD)V"),
         index = 0
