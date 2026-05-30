@@ -106,12 +106,6 @@ public abstract class MixinGameRenderer {
         });
     }
 
-    /**
-     * Per-eye Screen wrap matching the Angelica mod's pattern: render once at
-     * full display size into the scratch FB, then blit-squish into each eye
-     * region of main FB. Direct GL calls (not MC helpers) to match Angelica
-     * exactly and avoid any state-tracking that might no-op our binds/clears.
-     */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
         at = @At(value = "INVOKE",
@@ -122,7 +116,10 @@ public abstract class MixinGameRenderer {
                                             int mouseX, int mouseY, float partialTick,
                                             Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(screen, graphics, mouseX, mouseY, partialTick); return; }
-        stereoscopic$scratchAndBlit(graphics, () -> original.call(screen, graphics, mouseX, mouseY, partialTick));
+        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
+            original.call(screen, graphics, mouseX, mouseY, partialTick);
+            graphics.flush();
+        });
     }
 
     @WrapOperation(
@@ -135,7 +132,10 @@ public abstract class MixinGameRenderer {
                                              int mouseX, int mouseY, float partialTick,
                                              Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(self, graphics, mouseX, mouseY, partialTick); return; }
-        stereoscopic$scratchAndBlit(graphics, () -> original.call(self, graphics, mouseX, mouseY, partialTick));
+        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
+            original.call(self, graphics, mouseX, mouseY, partialTick);
+            graphics.flush();
+        });
     }
 
     @WrapOperation(
@@ -147,59 +147,10 @@ public abstract class MixinGameRenderer {
                                             net.minecraft.client.gui.GuiGraphics graphics,
                                             Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(self, graphics); return; }
-        stereoscopic$scratchAndBlit(graphics, () -> original.call(self, graphics));
-    }
-
-    /**
-     * Render once at full display size into scratch FB, then blit-squish into
-     * each eye-half of main FB. Matches Angelica's
-     * stereoscopic$stereoDrawScreen pattern (MixinEntityRenderer_Stereo:287).
-     * Direct GL calls — avoid MC's stateful helpers in case they no-op our
-     * binds/clears at the wrong moment.
-     */
-    private void stereoscopic$scratchAndBlit(net.minecraft.client.gui.GuiGraphics graphics, Runnable body) {
-        RenderTarget realMainFb = this.minecraft.getMainRenderTarget();
-        if (realMainFb == null) { body.run(); return; }
-        int w = realMainFb.width;
-        int h = realMainFb.height;
-        TextureTarget scratch = PerEyeRenderer.ensureScratchFb(w, h);
-        if (scratch == null) { body.run(); return; }
-
-        int realMainFbo = realMainFb.frameBufferId;
-        int scratchFbo = scratch.frameBufferId;
-
-        // Render once at full size into scratch (raw GL — match Angelica).
-        PerEyeRenderer.setScratchFbActive(true);
-        try {
-            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, scratchFbo);
-            GL11.glClearColor(0f, 0f, 0f, 1f);
-            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-            PerEyeRenderer.viewportRaw(0, 0, w, h);
-            PerEyeRenderer.scissorDisableRaw();
-            body.run();
+        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
+            original.call(self, graphics);
             graphics.flush();
-        } finally {
-            PerEyeRenderer.setScratchFbActive(false);
-        }
-
-        // Blit scratch -> each eye-half of main FB. Direct FBO binds (no
-        // intermediate FBOs / texture attachments).
-        boolean wasScissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
-        if (wasScissor) GL11.glDisable(GL11.GL_SCISSOR_TEST);
-        try {
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, scratchFbo);
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, realMainFbo);
-            // LEFT half
-            GL30.glBlitFramebuffer(0, 0, w, h, 0, 0, w / 2, h,
-                GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
-            // RIGHT half
-            GL30.glBlitFramebuffer(0, 0, w, h, w / 2, 0, w, h,
-                GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
-        } finally {
-            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, realMainFbo);
-            PerEyeRenderer.viewportRaw(0, 0, w, h);
-            if (wasScissor) GL11.glEnable(GL11.GL_SCISSOR_TEST);
-        }
+        });
     }
 
     /**
