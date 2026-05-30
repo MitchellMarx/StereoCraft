@@ -50,14 +50,18 @@ public abstract class MixinFramebuffer {
         if (!setViewport) return;
         StereoState s = StereoState.INSTANCE;
         if (!s.isActive()) return;
+        // GUI pass only — outside GUI pass, currentEye is stale from the
+        // previous world iter, and forcing the viewport to that stale eye-rect
+        // breaks anything that runs between world-end and HUD-start
+        // (entity outline composite, the bindWrite at GameRenderer.render+304,
+        // multi-pass blur PostChain that squishes the full FB into eye-rect
+        // each pass and tiles it visibly).
+        if (!s.isInGuiPass()) return;
         StereoState.Eye eye = s.getCurrentEye();
         if (eye != StereoState.Eye.LEFT && eye != StereoState.Eye.RIGHT) return;
         // Only restore for the MAIN render target. Intermediate FBs
         // (PostChain blur passes, glyph atlases, item icon FBs) should keep
-        // the viewport bindWrite just set to their own dimensions —
-        // overriding it forces full-screen draws to land in the eye-rect of
-        // a small intermediate FB and tiles the result everywhere it gets
-        // sampled.
+        // the viewport bindWrite just set to their own dimensions.
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
         if ((Object) this != mc.getMainRenderTarget()) return;
