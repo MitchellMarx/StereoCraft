@@ -28,7 +28,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(GameRenderer.class)
+@Mixin(value = GameRenderer.class, priority = 2000)
 public abstract class MixinGameRenderer {
 
     @Shadow @Final private Minecraft minecraft;
@@ -78,6 +78,34 @@ public abstract class MixinGameRenderer {
     @Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("RETURN"))
     private void stereoscopic$endFrame(DeltaTracker tracker, boolean tick, CallbackInfo ci) {
         StereoState.INSTANCE.endFrame();
+    }
+
+    /**
+     * Per-eye HUD wrap. MC 1.21.1's {@code GameRenderer.render()} calls
+     * {@code Gui.render(GuiGraphics, DeltaTracker)} once after the world
+     * render finishes. With our world-render output already split into
+     * eye-halves on the main FB, a single full-window HUD draw straddles the
+     * L/R seam — each physical eye sees half. Wrap the call in
+     * {@link PerEyeRenderer#runForEachEye} with {@code Pass.GUI} so the HUD
+     * is drawn twice, once per eye-half, with eye-rect viewport + scissor
+     * set up by PerEyeRenderer.
+     */
+    @WrapOperation(
+        method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
+        at = @At(value = "INVOKE",
+                 target = "Lnet/minecraft/client/gui/Gui;render(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/DeltaTracker;)V")
+    )
+    private void stereoscopic$perEyeHud(net.minecraft.client.gui.Gui self,
+                                         net.minecraft.client.gui.GuiGraphics graphics,
+                                         DeltaTracker delta,
+                                         Operation<Void> original) {
+        if (!StereoState.INSTANCE.isActive()) {
+            original.call(self, graphics, delta);
+            return;
+        }
+        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
+            original.call(self, graphics, delta);
+        });
     }
 
     /**

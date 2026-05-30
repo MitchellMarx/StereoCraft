@@ -1,6 +1,6 @@
 # StereoCraft: Stereoscopic 3D (NeoForge edition)
 
-Side-by-side (SBS) stereoscopic 3D rendering for Minecraft **1.21.1** on **NeoForge**, with per-eye world rendering through **Sodium** and **Iris**. Splits the Minecraft window into left and right eye views with a configurable interpupillary distance (IPD), producing a stereoscopic image for 3D TVs, 3D monitors, SBS-capable HMDs, and VR passthrough virtual monitors.
+Side-by-side (SBS) stereoscopic 3D rendering for Minecraft **1.21.1** on **NeoForge**, with full per-eye support under **Sodium** and **Iris** shaders. Splits the Minecraft window into left and right eye views with a configurable interpupillary distance (IPD), producing a stereoscopic image for 3D TVs, 3D monitors, SBS-capable HMDs, and VR passthrough virtual monitors.
 
 This is the NeoForge sibling of [StereoCraft Fabric](https://github.com/MitchellMarx/Stereoscopic) and [StereoCraft Angelica](https://github.com/MitchellMarx/Stereoscopic-Angelica).
 
@@ -13,7 +13,8 @@ This is the NeoForge sibling of [StereoCraft Fabric](https://github.com/Mitchell
 
 ## Optional
 
-- [Iris](https://modrinth.com/mod/iris) **1.8.12** for partial shader support — see *Known limitations* below.
+- [Iris](https://modrinth.com/mod/iris) **1.8.12** for shader support.
+- Reverse-SBS displays / VR passthrough virtual monitors — toggle **Swap eyes** in the in-game options.
 
 ## Installation
 
@@ -24,56 +25,35 @@ This is the NeoForge sibling of [StereoCraft Fabric](https://github.com/Mitchell
 
 ## Configuration
 
-v0.1.0 ships with **file-based configuration only**. Sodium 0.6's options-page API doesn't accept third-party pages (that arrived in 0.7+).
+Bind the **Open Stereoscopic Options** key under **Options → Controls → Stereoscopic 3D** (default unbound). Pressing the key opens a screen with:
 
-Edit `config/stereoscopic-options.json` (created with defaults on first launch):
+- **Mode** — `OFF` or `SBS_HALF`. Mode changes trigger an Iris pipeline rebuild on the next frame (one-frame flash with shaders loaded).
+- **IPD** — 55–75 mm, default 64 mm.
+- **Convergence distance** — 0–32 blocks, default 4. 0 = parallel-axis (no shear).
+- **Swap eyes** — flip per-eye assignment for reverse-SBS displays / VR virtual-monitor setups.
+- **Apply / Cancel** — Apply commits the settings, persists to `config/stereoscopic-options.json`, and triggers the Iris rebuild if mode changed.
 
-```json
-{
-    "mode": "SBS_HALF",
-    "ipd": 0.064,
-    "convergence": 4.0,
-    "swapEyes": false
-}
-```
+You can also edit `config/stereoscopic-options.json` manually — the format is straightforward JSON and changes round-trip cleanly through the options screen.
 
-- **`mode`** — `OFF` or `SBS_HALF`.
-- **`ipd`** — interpupillary distance in **meters**. Anthropomorphic range 0.055 – 0.075. Default 0.064 (64 mm).
-- **`convergence`** — off-axis convergence distance in blocks. Objects at this depth sit at the screen plane (zero parallax). 0 = parallel-axis (no frustum shear). Default 4.
-- **`swapEyes`** — flip per-eye assignment for reverse-SBS displays / VR virtual-monitor setups.
+## Compatibility
 
-Restart the game after editing.
+- **Iris shaderpacks**: EuphoriaPatcher, BSL, Complementary tested. Per-eye colortex banking keeps each eye's temporal slots (PBR reflection cache, TAA history, screen-space colored blocklight) separate so eyes don't cross-contaminate.
+- **Distant Horizons**: per-eye DH-projection shear restoration under shaders.
+- **Sable** (Create Aeronautics sub-level physics): sub-levels render per-eye with correct parallax. Our `MixinGameRenderer` is declared `priority = 2000` so our two-pass world wrap applies OUTSIDE Sable's `clip_overwrite/GameRendererMixin` — Sable's clip-overwrite setup/teardown runs per eye, not once across both eyes.
+- **Create**: contraptions render per-eye through the normal `LevelRenderer` path.
+- **HUDCaching** (NeoForge port if installed): HUD cache invalidates per eye-half via our `Pass.GUI` wrap.
 
-## What works
+## Known limitations
 
-- ✅ World rendering split into left / right eye halves with IPD-shifted cameras
-- ✅ Off-axis frustum convergence
-- ✅ Sodium chunk-graph reuse across the two eyes (RIGHT eye's chunk BFS is skipped — LEFT's output feeds RIGHT's render)
-- ✅ Mouse look-X correctly halved under SBS_HALF
-- ✅ Virtual cursor seeded at left-half center when a GUI opens
-- ✅ Win32 async cursor present thread (Windows only — cursor visible in both eye halves at low FPS)
-- ✅ Shader pipeline rebuild on stereo toggle (when Iris is loaded)
-- ✅ Iris shadow pass runs once per frame from mono camera (matches both eyes)
-- ✅ Iris per-eye uniforms (camera position, matrix history) — TAA / motion vectors / motion blur stay coherent per eye
-
-## Known limitations / v0.1.0 deferrals
-
-- **Per-eye Iris colortex banking is not yet implemented** (`MixinRenderTargets` and `MixinFinalPassRenderer` deferred to v0.1.x). Under shaders, both eyes sample the same colortex bank — TAA / reflections / SSCB will cross-contaminate between eyes. Pure-vanilla stereo (shaders off) is unaffected.
-- **HUD overlay renders mono across the full window**, not per-eye. Without a per-eye GUI wrap each physical eye sees half of the HUD. Will be fixed in v0.1.x.
-- **No in-game options UI.** Edit `config/stereoscopic-options.json` and restart. Sodium options-page integration deferred to v0.1.x.
-- **Voxy compat deferred**: no NeoForge Voxy build with iris module currently exists. The community port `j-shelfwood/voxy-neoforge` excludes its iris module from the jar.
-- **Sable compat deferred**: implicit sub-level rendering works through the standard `LevelRenderer` path; explicit per-eye colortex coordination + mixin-priority declarations land alongside `MixinRenderTargets`.
+- **Voxy compat deferred to v0.1.x**: no NeoForge Voxy build with iris module currently exists. The community port `j-shelfwood/voxy-neoforge` excludes its iris module from the jar.
 - **Async cursor presents Windows-only**: cursor mirror uses Win32 cursor APIs. Linux/macOS shows the cursor in only one eye while a GUI is open.
-
-## Compatibility notes
-
-- **Create** (`create-1.21.1`): contraptions render per-eye through the normal `LevelRenderer` path with no special handling.
-- **EuphoriaPatcher**: shader pack loads; world stereo works; per-eye reflections degraded until `MixinRenderTargets` lands.
+- **Iris pipeline first-frame rebuild**: on world load with shaders already on, Iris loads its pipeline once before our stereo state is published. We auto-trigger a rebuild on the first stereo-active frame — you may see a one-frame flash.
+- **Sodium chunk-visibility cull**: BFS skipped on the second eye (chunks visible to one eye are visible to the other at typical IPD). At extreme IPD / convergence near a chunk boundary you might see a missing-chunk artifact for one frame.
 
 ## Differences from the Fabric / Angelica siblings
 
 - **`StereoBlur` is not present.** The Fabric mod's `StereoBlur` works around an MC 1.21.6+ regression where `GameRenderer.renderBlur()` routes through `CommandEncoder.createRenderPass` and ignores classic glScissor. MC 1.21.1 still uses the older `PostChain` blur path which respects glScissor, so the workaround isn't needed.
-- **Sodium options-page integration is not present** (see above).
+- **Options page is a standalone screen, not a Sodium tab.** Sodium 0.6 has no third-party options-page API (added in 0.7+). Rather than couple to the modpack-specific `sodiumoptionsapi` add-on, we ship a keybinding-driven standalone screen.
 - **No `SBS_FULL` / `OUDA_FULL` / `OUDA_HALF` modes.** The Angelica mod has these as prototype-debugging cruft; the canonical feature set (Fabric mod's) only ships `OFF` / `SBS_HALF`. This mod matches the canonical set.
 
 ## License

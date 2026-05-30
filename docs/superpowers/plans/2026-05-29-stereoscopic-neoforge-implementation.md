@@ -1132,9 +1132,9 @@ git -C /c/CODE/Stereoscopic-Neoforge commit -m "feat(cursor): port Windows curso
 
 ---
 
-### Task 17: Sodium options page — `StereoOptionsPage` — **DEFERRED to v0.1.x**
+### Task 17: Options UI — `StereoOptionsScreen` + keybinding
 
-**Why deferred (2026-05-29):** Sodium 0.6 (the Aeronautics modpack version) has no third-party options-page API — that mechanism arrived in Sodium 0.7+ via `sodium:config_api_user`. The modpack's `sodiumoptionsapi-neoforge` add-on provides this missing API, but coupling our mod to it would make it modpack-specific (failing on Sodium 0.6 installs without sodiumoptionsapi). For v0.1.0, settings are file-based at `config/stereoscopic-options.json` — the JSON format round-trips cleanly and the file is created on first launch with defaults. Re-enable when one of: (1) Aeronautics updates to Sodium 0.7+, (2) we accept sodiumoptionsapi as a soft compileOnly dep with runtime detect, (3) we ship our own standalone-screen UI accessed via a keybind.
+Sodium 0.6 has no third-party options-page API (that arrived in 0.7+). Instead of coupling to the modpack-specific `sodiumoptionsapi` add-on, ship a standalone Stereoscopic options screen accessed via a keybinding (`key.stereoscopic.options`, default unbound; user binds via Options → Controls). Implementation landed in commit `1f41baf`.
 
 
 The in-game options UI. Registered through Sodium 0.6's options-API entry point.
@@ -1225,9 +1225,9 @@ git -C /c/CODE/Stereoscopic-Neoforge commit -m "feat(compat/voxy): per-eye LOD r
 
 ---
 
-### Task 19: Sable compat — `compat/sable/` module — **DEFERRED to v0.1.x**
+### Task 19: Sable compat — `compat/sable/SableSubLevelEyeHooks`
 
-**Why deferred (2026-05-29):** The two non-trivial Sable concerns were (a) per-eye colortex bank coordination around Sable's sub-level draw and (b) mixin-ordering against Sable's three `GameRendererMixin`s. Concern (a) is downstream of `MixinRenderTargets` (also deferred), so there's nothing meaningful to coordinate with in v0.1.0. Sable sub-levels still render per-eye implicitly through our `renderLevel` wrap in `MixinGameRenderer`. Concern (b) is verification-driven — without observable conflicts in testing (Task 21), there's no concrete priority to declare. Re-open this task during v0.1.x once Iris colortex banking lands and shader-enabled testing surfaces real failure modes (or after Aeronautics playtesting reveals mixin-priority conflicts).
+Sable's `clip_overwrite/GameRendererMixin.sable$renderLevel` is also a `@WrapOperation` on `GameRenderer.render`'s `renderLevel` INVOKE — a real conflict with our `stereoscopic$twoPassRenderWorld`. Resolved by declaring `@Mixin(value = GameRenderer.class, priority = 2000)` on our `MixinGameRenderer` (Mixin default is 1000) so our wrap applies OUTSIDE Sable's. Result: each eye iteration runs the full Sable clip-overwrite logic; setup and teardown happen per eye (correct), not once across both. The `SableSubLevelEyeHooks` class is a Sable-presence flag for any future compat work to gate on.
 
 
 **Files:**
