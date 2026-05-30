@@ -107,10 +107,78 @@ public abstract class MixinGameRenderer {
         PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
             original.call(self, graphics, delta);
             // GuiGraphics batches draws into a deferred MultiBufferSource that
-            // doesn't flush until the GameRenderer.render() epilogue. Without
-            // forcing a flush HERE, both eye iterations accumulate vertices
-            // into the same buffer and only the final viewport (full window)
-            // is in effect when the GPU submission happens — HUD renders mono.
+            // doesn't flush until the GameRenderer.render() epilogue. Force a
+            // flush HERE so each eye's draws rasterize with the eye-rect
+            // viewport that PerEyeRenderer just set up.
+            graphics.flush();
+        });
+    }
+
+    /**
+     * Per-eye Screen wrap. When a Screen is open (inventory, pause menu, our
+     * Stereoscopic options screen, etc.) NeoForge routes the draw through
+     * {@code ClientHooks.drawScreen(Screen, GuiGraphics, int, int, float)}.
+     * Same shape as the HUD wrap — render twice, flush between iterations.
+     */
+    @WrapOperation(
+        method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
+        at = @At(value = "INVOKE",
+                 target = "Lnet/neoforged/neoforge/client/ClientHooks;drawScreen(Lnet/minecraft/client/gui/screens/Screen;Lnet/minecraft/client/gui/GuiGraphics;IIF)V")
+    )
+    private void stereoscopic$perEyeScreen(net.minecraft.client.gui.screens.Screen screen,
+                                            net.minecraft.client.gui.GuiGraphics graphics,
+                                            int mouseX, int mouseY, float partialTick,
+                                            Operation<Void> original) {
+        if (!StereoState.INSTANCE.isActive()) {
+            original.call(screen, graphics, mouseX, mouseY, partialTick);
+            return;
+        }
+        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
+            original.call(screen, graphics, mouseX, mouseY, partialTick);
+            graphics.flush();
+        });
+    }
+
+    /**
+     * Per-eye loading overlay (Mojang logo on first launch, resource pack
+     * reload, etc.). Same shape — wrap the Overlay.render call.
+     */
+    @WrapOperation(
+        method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
+        at = @At(value = "INVOKE",
+                 target = "Lnet/minecraft/client/gui/screens/Overlay;render(Lnet/minecraft/client/gui/GuiGraphics;IIF)V")
+    )
+    private void stereoscopic$perEyeOverlay(net.minecraft.client.gui.screens.Overlay self,
+                                             net.minecraft.client.gui.GuiGraphics graphics,
+                                             int mouseX, int mouseY, float partialTick,
+                                             Operation<Void> original) {
+        if (!StereoState.INSTANCE.isActive()) {
+            original.call(self, graphics, mouseX, mouseY, partialTick);
+            return;
+        }
+        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
+            original.call(self, graphics, mouseX, mouseY, partialTick);
+            graphics.flush();
+        });
+    }
+
+    /**
+     * Per-eye toast component (advancement popups, tutorial hints).
+     */
+    @WrapOperation(
+        method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
+        at = @At(value = "INVOKE",
+                 target = "Lnet/minecraft/client/gui/components/toasts/ToastComponent;render(Lnet/minecraft/client/gui/GuiGraphics;)V")
+    )
+    private void stereoscopic$perEyeToasts(net.minecraft.client.gui.components.toasts.ToastComponent self,
+                                            net.minecraft.client.gui.GuiGraphics graphics,
+                                            Operation<Void> original) {
+        if (!StereoState.INSTANCE.isActive()) {
+            original.call(self, graphics);
+            return;
+        }
+        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
+            original.call(self, graphics);
             graphics.flush();
         });
     }
