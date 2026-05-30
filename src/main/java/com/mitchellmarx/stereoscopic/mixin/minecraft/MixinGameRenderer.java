@@ -106,6 +106,17 @@ public abstract class MixinGameRenderer {
         });
     }
 
+    /**
+     * Per-eye Screen wrap via scratch FB (Angelica mod approach). Render the
+     * screen ONCE at full display size into the scratch FB, then blit-squish
+     * into each eye region of main FB. Avoids the state-leak issues that
+     * make per-eye iteration unreliable for the screens (FancyMenu, blur
+     * background, etc. all bypass per-eye viewport in various ways).
+     *
+     * <p>Blit is destructive — overwrites the eye-half. That's correct for
+     * screens because the screen typically paints its own background (dim
+     * overlay or panorama or dirt texture) covering the world.
+     */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
         at = @At(value = "INVOKE",
@@ -116,10 +127,7 @@ public abstract class MixinGameRenderer {
                                             int mouseX, int mouseY, float partialTick,
                                             Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(screen, graphics, mouseX, mouseY, partialTick); return; }
-        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            original.call(screen, graphics, mouseX, mouseY, partialTick);
-            graphics.flush();
-        });
+        stereoscopic$scratchAndBlitTwice(graphics, () -> original.call(screen, graphics, mouseX, mouseY, partialTick));
     }
 
     @WrapOperation(
@@ -132,10 +140,7 @@ public abstract class MixinGameRenderer {
                                              int mouseX, int mouseY, float partialTick,
                                              Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(self, graphics, mouseX, mouseY, partialTick); return; }
-        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            original.call(self, graphics, mouseX, mouseY, partialTick);
-            graphics.flush();
-        });
+        stereoscopic$scratchAndBlitTwice(graphics, () -> original.call(self, graphics, mouseX, mouseY, partialTick));
     }
 
     @WrapOperation(
@@ -147,10 +152,56 @@ public abstract class MixinGameRenderer {
                                             net.minecraft.client.gui.GuiGraphics graphics,
                                             Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(self, graphics); return; }
-        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            original.call(self, graphics);
+        stereoscopic$scratchAndBlitTwice(graphics, () -> original.call(self, graphics));
+    }
+
+    /**
+     * Render full-size into scratch FB, then blit-squish into each eye-half of
+     * main FB. Used for screens/overlays/toasts where per-eye iteration of the
+     * draw call itself is unreliable (Angelica mod uses the same pattern).
+     */
+    private void stereoscopic$scratchAndBlitTwice(net.minecraft.client.gui.GuiGraphics graphics, Runnable body) {
+        RenderTarget realMainFb = this.minecraft.getMainRenderTarget();
+        if (realMainFb == null || realMainFb.getColorTextureId() <= 0) {
+            body.run();
+            return;
+        }
+        int w = realMainFb.width;
+        int h = realMainFb.height;
+        TextureTarget scratch = PerEyeRenderer.ensureScratchFb(w, h);
+
+        // Render once at full size into scratch.
+        PerEyeRenderer.setScratchFbActive(true);
+        try {
+            scratch.bindWrite(true);
+            // Clear scratch — prior frame's world-blit content lives there and
+            // would bleed through screen's dim background otherwise.
+            com.mojang.blaze3d.platform.GlStateManager._clearColor(0f, 0f, 0f, 0f);
+            com.mojang.blaze3d.platform.GlStateManager._clear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT, false);
+            PerEyeRenderer.viewportRaw(0, 0, w, h);
+            PerEyeRenderer.scissorRaw(0, 0, w, h);
+            body.run();
             graphics.flush();
-        });
+        } finally {
+            PerEyeRenderer.setScratchFbActive(false);
+        }
+
+        // Blit scratch to each eye-half. enterGuiPass updates eye-rect for the
+        // shared blitScratchToMain helper to read.
+        realMainFb.bindWrite(true);
+        StereoState s = StereoState.INSTANCE;
+
+        s.setEye(StereoState.Eye.LEFT);
+        s.enterGuiPass(0, 0, w / 2, h);
+        stereoscopic$blitScratchToMain(scratch, realMainFb, w, h);
+        s.exitGuiPass();
+
+        s.setEye(StereoState.Eye.RIGHT);
+        s.enterGuiPass(w / 2, 0, w / 2, h);
+        stereoscopic$blitScratchToMain(scratch, realMainFb, w, h);
+        s.exitGuiPass();
+
+        s.setEye(StereoState.Eye.MONO);
     }
 
     /**
