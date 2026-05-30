@@ -172,6 +172,15 @@ public abstract class MixinGameRenderer {
 
                 PerEyeRenderer.setScratchFbActive(true);
                 try {
+                    // PerEyeRenderer.renderOneEye set viewport+scissor to the
+                    // eye-rect of main FB. With scratch FB active we're actually
+                    // rendering into scratch (sized fbW x fbH), so override to
+                    // full-FB viewport/scissor — otherwise the world fills only
+                    // the eye-rect portion of scratch and the rest stays as
+                    // previous-frame garbage which then gets blitted into the
+                    // eye-half of main alongside the proper content.
+                    PerEyeRenderer.viewportRaw(0, 0, w, h);
+                    PerEyeRenderer.scissorRaw(0, 0, w, h);
                     original.call(self, tickCounter);
                 } finally {
                     PerEyeRenderer.setScratchFbActive(false);
