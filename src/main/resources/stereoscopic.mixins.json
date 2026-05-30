@@ -11,7 +11,8 @@
         "minecraft.MixinFramebuffer",
         "minecraft.MixinMouse",
         "minecraft.CameraAccessor",
-        "minecraft.MouseAccessor"
+        "minecraft.MouseAccessor",
+        "sodium.MixinSodiumWorldRenderer"
     ],
     "mixins": [],
     "injectors": { "defaultRequire": 1 }
