@@ -96,29 +96,54 @@ public abstract class MixinGameRenderer {
         at = @At(value = "INVOKE",
                  target = "Lnet/minecraft/client/gui/Gui;render(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/DeltaTracker;)V")
     )
+    /**
+     * Per-eye HUD/Screen/Overlay/Toast compression at the model-view matrix
+     * level. Setting glViewport per eye doesn't reliably clip the GUI in
+     * 1.21.x because many HUD draws bypass viewport for various reasons.
+     * Scaling the {@code GuiGraphics.pose()} stack horizontally by 0.5 and
+     * translating by {@code +fbW/2} for the RIGHT eye instead routes the
+     * HUD's pixel coords through the existing full-window ortho projection
+     * into the correct eye-half of NDC. (Mirrors the Fabric mod's
+     * MixinGuiRenderer model-view compression, adapted for MC 1.21.1's
+     * GuiGraphics/PoseStack.)
+     *
+     * <p>JOML/PoseStack chains right-to-left in vector application:
+     * {@code pose.translate(t).scale(s)} means {@code M = T*S}, so
+     * {@code v' = T*S*v = scale-then-translate}.
+     */
+    @Unique
+    private static void stereoscopic$perEyeGuiTransform(net.minecraft.client.gui.GuiGraphics graphics) {
+        StereoState s = StereoState.INSTANCE;
+        int fbW = s.getFrameFbW();
+        // RIGHT half: shift to fbW/2..fbW. Apply translate before scale so v' = T*S*v.
+        if (s.getCurrentEye() == StereoState.Eye.RIGHT) {
+            graphics.pose().translate(fbW / 2f, 0f, 0f);
+        }
+        graphics.pose().scale(0.5f, 1f, 1f);
+    }
+
+    @Unique
+    private static void stereoscopic$runPerEyeGui(net.minecraft.client.gui.GuiGraphics graphics, Runnable body) {
+        if (!StereoState.INSTANCE.isActive()) { body.run(); return; }
+        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
+            graphics.pose().pushPose();
+            stereoscopic$perEyeGuiTransform(graphics);
+            body.run();
+            graphics.flush();
+            graphics.pose().popPose();
+        });
+    }
+
     private void stereoscopic$perEyeHud(net.minecraft.client.gui.Gui self,
                                          net.minecraft.client.gui.GuiGraphics graphics,
                                          DeltaTracker delta,
                                          Operation<Void> original) {
-        if (!StereoState.INSTANCE.isActive()) {
-            original.call(self, graphics, delta);
-            return;
-        }
-        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            original.call(self, graphics, delta);
-            // GuiGraphics batches draws into a deferred MultiBufferSource that
-            // doesn't flush until the GameRenderer.render() epilogue. Force a
-            // flush HERE so each eye's draws rasterize with the eye-rect
-            // viewport that PerEyeRenderer just set up.
-            graphics.flush();
-        });
+        stereoscopic$runPerEyeGui(graphics, () -> original.call(self, graphics, delta));
     }
 
     /**
-     * Per-eye Screen wrap. When a Screen is open (inventory, pause menu, our
-     * Stereoscopic options screen, etc.) NeoForge routes the draw through
-     * {@code ClientHooks.drawScreen(Screen, GuiGraphics, int, int, float)}.
-     * Same shape as the HUD wrap — render twice, flush between iterations.
+     * Per-eye Screen wrap. When a Screen is open, NeoForge routes the draw
+     * through {@code ClientHooks.drawScreen(Screen, GuiGraphics, int, int, float)}.
      */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
@@ -129,19 +154,11 @@ public abstract class MixinGameRenderer {
                                             net.minecraft.client.gui.GuiGraphics graphics,
                                             int mouseX, int mouseY, float partialTick,
                                             Operation<Void> original) {
-        if (!StereoState.INSTANCE.isActive()) {
-            original.call(screen, graphics, mouseX, mouseY, partialTick);
-            return;
-        }
-        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            original.call(screen, graphics, mouseX, mouseY, partialTick);
-            graphics.flush();
-        });
+        stereoscopic$runPerEyeGui(graphics, () -> original.call(screen, graphics, mouseX, mouseY, partialTick));
     }
 
     /**
-     * Per-eye loading overlay (Mojang logo on first launch, resource pack
-     * reload, etc.). Same shape — wrap the Overlay.render call.
+     * Per-eye loading overlay (Mojang logo on first launch, resource pack reload, etc.).
      */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
@@ -152,14 +169,7 @@ public abstract class MixinGameRenderer {
                                              net.minecraft.client.gui.GuiGraphics graphics,
                                              int mouseX, int mouseY, float partialTick,
                                              Operation<Void> original) {
-        if (!StereoState.INSTANCE.isActive()) {
-            original.call(self, graphics, mouseX, mouseY, partialTick);
-            return;
-        }
-        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            original.call(self, graphics, mouseX, mouseY, partialTick);
-            graphics.flush();
-        });
+        stereoscopic$runPerEyeGui(graphics, () -> original.call(self, graphics, mouseX, mouseY, partialTick));
     }
 
     /**
@@ -173,14 +183,7 @@ public abstract class MixinGameRenderer {
     private void stereoscopic$perEyeToasts(net.minecraft.client.gui.components.toasts.ToastComponent self,
                                             net.minecraft.client.gui.GuiGraphics graphics,
                                             Operation<Void> original) {
-        if (!StereoState.INSTANCE.isActive()) {
-            original.call(self, graphics);
-            return;
-        }
-        PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            original.call(self, graphics);
-            graphics.flush();
-        });
+        stereoscopic$runPerEyeGui(graphics, () -> original.call(self, graphics));
     }
 
     /**
