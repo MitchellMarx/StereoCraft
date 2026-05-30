@@ -83,14 +83,12 @@ public abstract class MixinGameRenderer {
     }
 
     /**
-     * Per-eye HUD/Screen/Overlay/Toast compression at the model-view matrix
-     * level. Setting glViewport per eye doesn't reliably clip the GUI in
-     * 1.21.x because many HUD draws bypass viewport. Scaling the
-     * {@code GuiGraphics.pose()} stack horizontally by 0.5 and translating
-     * by {@code +fbW/2} for the RIGHT eye routes the HUD's pixel coords
-     * through the existing full-window ortho projection into the correct
-     * eye-half of NDC. (Mirrors the Fabric mod's MixinGuiRenderer model-view
-     * compression, adapted for MC 1.21.1's GuiGraphics/PoseStack.)
+     * Per-eye HUD wrap. PerEyeRenderer.renderOneEye sets glViewport+glScissor
+     * to the eye-rect; MC 1.21.1's Gui.render uses GuiGraphics which submits
+     * draws through the standard GL pipeline that respects glViewport, so the
+     * full-coord HUD gets clipped and compressed into the eye-rect.
+     * (The Fabric mod's pose-stack approach in MixinGuiRenderer is specific
+     * to MC 1.21.6+ where CommandEncoder.createRenderPass ignores glViewport.)
      */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
@@ -102,24 +100,12 @@ public abstract class MixinGameRenderer {
                                          DeltaTracker delta,
                                          Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(self, graphics, delta); return; }
-        int fbW = StereoState.INSTANCE.getFrameFbW();
         PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            graphics.pose().pushPose();
-            // RIGHT half: translate then scale so v' = T*S*v (scale-then-translate)
-            if (StereoState.INSTANCE.getCurrentEye() == StereoState.Eye.RIGHT) {
-                graphics.pose().translate(fbW / 2f, 0f, 0f);
-            }
-            graphics.pose().scale(0.5f, 1f, 1f);
             original.call(self, graphics, delta);
             graphics.flush();
-            graphics.pose().popPose();
         });
     }
 
-    /**
-     * Per-eye Screen wrap. When a Screen is open, NeoForge routes the draw
-     * through {@code ClientHooks.drawScreen(Screen, GuiGraphics, int, int, float)}.
-     */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
         at = @At(value = "INVOKE",
@@ -130,22 +116,12 @@ public abstract class MixinGameRenderer {
                                             int mouseX, int mouseY, float partialTick,
                                             Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(screen, graphics, mouseX, mouseY, partialTick); return; }
-        int fbW = StereoState.INSTANCE.getFrameFbW();
         PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            graphics.pose().pushPose();
-            if (StereoState.INSTANCE.getCurrentEye() == StereoState.Eye.RIGHT) {
-                graphics.pose().translate(fbW / 2f, 0f, 0f);
-            }
-            graphics.pose().scale(0.5f, 1f, 1f);
             original.call(screen, graphics, mouseX, mouseY, partialTick);
             graphics.flush();
-            graphics.pose().popPose();
         });
     }
 
-    /**
-     * Per-eye loading overlay (Mojang logo on first launch, resource pack reload, etc.).
-     */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
         at = @At(value = "INVOKE",
@@ -156,22 +132,12 @@ public abstract class MixinGameRenderer {
                                              int mouseX, int mouseY, float partialTick,
                                              Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(self, graphics, mouseX, mouseY, partialTick); return; }
-        int fbW = StereoState.INSTANCE.getFrameFbW();
         PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            graphics.pose().pushPose();
-            if (StereoState.INSTANCE.getCurrentEye() == StereoState.Eye.RIGHT) {
-                graphics.pose().translate(fbW / 2f, 0f, 0f);
-            }
-            graphics.pose().scale(0.5f, 1f, 1f);
             original.call(self, graphics, mouseX, mouseY, partialTick);
             graphics.flush();
-            graphics.pose().popPose();
         });
     }
 
-    /**
-     * Per-eye toast component (advancement popups, tutorial hints).
-     */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
         at = @At(value = "INVOKE",
@@ -181,16 +147,9 @@ public abstract class MixinGameRenderer {
                                             net.minecraft.client.gui.GuiGraphics graphics,
                                             Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) { original.call(self, graphics); return; }
-        int fbW = StereoState.INSTANCE.getFrameFbW();
         PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            graphics.pose().pushPose();
-            if (StereoState.INSTANCE.getCurrentEye() == StereoState.Eye.RIGHT) {
-                graphics.pose().translate(fbW / 2f, 0f, 0f);
-            }
-            graphics.pose().scale(0.5f, 1f, 1f);
             original.call(self, graphics);
             graphics.flush();
-            graphics.pose().popPose();
         });
     }
 
