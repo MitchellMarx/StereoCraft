@@ -4,6 +4,7 @@ import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.cursor.CursorPresentThread;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -51,6 +52,15 @@ public abstract class MixinFramebuffer {
         if (!s.isActive()) return;
         StereoState.Eye eye = s.getCurrentEye();
         if (eye != StereoState.Eye.LEFT && eye != StereoState.Eye.RIGHT) return;
+        // Only restore for the MAIN render target. Intermediate FBs
+        // (PostChain blur passes, glyph atlases, item icon FBs) should keep
+        // the viewport bindWrite just set to their own dimensions —
+        // overriding it forces full-screen draws to land in the eye-rect of
+        // a small intermediate FB and tiles the result everywhere it gets
+        // sampled.
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+        if ((Object) this != mc.getMainRenderTarget()) return;
         int w = s.getEyeVpW();
         int h = s.getEyeVpH();
         if (w <= 0 || h <= 0) return;
