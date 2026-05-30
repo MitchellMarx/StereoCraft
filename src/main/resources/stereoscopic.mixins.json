@@ -9,6 +9,7 @@
         "minecraft.MixinRenderSystem",
         "minecraft.MixinGlStateManager",
         "minecraft.MixinFramebuffer",
+        "minecraft.MixinMouse",
         "minecraft.CameraAccessor",
         "minecraft.MouseAccessor"
     ],
