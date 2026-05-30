@@ -1225,7 +1225,10 @@ git -C /c/CODE/Stereoscopic-Neoforge commit -m "feat(compat/voxy): per-eye LOD r
 
 ---
 
-### Task 19: Sable compat — `compat/sable/` module
+### Task 19: Sable compat — `compat/sable/` module — **DEFERRED to v0.1.x**
+
+**Why deferred (2026-05-29):** The two non-trivial Sable concerns were (a) per-eye colortex bank coordination around Sable's sub-level draw and (b) mixin-ordering against Sable's three `GameRendererMixin`s. Concern (a) is downstream of `MixinRenderTargets` (also deferred), so there's nothing meaningful to coordinate with in v0.1.0. Sable sub-levels still render per-eye implicitly through our `renderLevel` wrap in `MixinGameRenderer`. Concern (b) is verification-driven — without observable conflicts in testing (Task 21), there's no concrete priority to declare. Re-open this task during v0.1.x once Iris colortex banking lands and shader-enabled testing surfaces real failure modes (or after Aeronautics playtesting reveals mixin-priority conflicts).
+
 
 **Files:**
 - Create: `src/main/java/com/mitchellmarx/stereoscopic/compat/sable/SableSubLevelEyeHooks.java`
