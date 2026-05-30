@@ -1186,7 +1186,9 @@ User installs Voxy NeoForge and DH NeoForge into the test instance before these 
 
 ---
 
-### Task 18: Voxy compat — `VoxyEyeRebindHooks`
+### Task 18: Voxy compat — `VoxyEyeRebindHooks` — **DEFERRED to v0.1.x**
+
+**Why deferred (2026-05-29):** No usable Voxy build with Iris support exists for NeoForge 1.21.1. The community port `j-shelfwood/voxy-neoforge` excludes the iris module from its jar (see `voxy-neoforge/build.gradle` source-set excludes). The Fabric upstream Voxy ships full iris support but would require Sinytra Connector at runtime, which is a larger user-side dependency. Re-enable this task when one of the following is sourced: (1) a voxy-neoforge build with iris module re-enabled, (2) a community NeoForge-native Voxy fork with iris, or (3) the user commits to Sinytra Connector and the Fabric Voxy + `IGetIrisVoxyPipelineData` namespace is verifiably preserved at runtime.
 
 **Files:**
 - Create: `src/main/java/com/mitchellmarx/stereoscopic/compat/voxy/VoxyEyeRebindHooks.java`

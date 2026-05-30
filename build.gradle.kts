@@ -52,6 +52,10 @@ dependencies {
     compileOnly("maven.modrinth:iris:${project.property("iris_version")}+${project.property("minecraft_version")}-neoforge")
     runtimeOnly("maven.modrinth:iris:${project.property("iris_version")}+${project.property("minecraft_version")}-neoforge")
 
+    // Voxy: deferred. No NeoForge build with an Iris module exists yet;
+    // j-shelfwood/voxy-neoforge excludes iris from its jar. Re-add as
+    // compileOnly when a usable Voxy + Iris combination is sourced.
+
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.joml:joml:${project.property("joml_version")}")
