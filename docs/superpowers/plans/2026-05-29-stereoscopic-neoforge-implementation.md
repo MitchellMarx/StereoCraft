@@ -591,61 +591,54 @@ git -C /c/CODE/Stereoscopic-Neoforge commit -m "feat(core): port StereoOptions/I
 
 ---
 
-### Task 5: Render package — `ViewportMath`, `StereoBlur`, `PerEyeRenderer`
+### Task 5: Render package — `ViewportMath`, `PerEyeRenderer` (StereoBlur dropped)
 
-`ViewportMath` is pure math (ports + tests verbatim). `StereoBlur` uses `RenderSystem` and may have minor API deltas between MC 1.21.11 and 1.21.1. `PerEyeRenderer` orchestrates the two-pass world render — it references `StereoState` (already ported) and is called from mixins (still to come).
+`ViewportMath` is pure math (verbatim port + test). `PerEyeRenderer` orchestrates the two-pass world render with several MC-1.21.1-specific API adaptations. **`StereoBlur` is dropped** — it's a workaround for an MC 1.21.6+ regression that doesn't exist in 1.21.1.
+
+**Why `StereoBlur` is dropped:** The Fabric mod's `StereoBlur` exists because `GameRenderer.renderBlur()` in MC 1.21.6+ runs through `CommandEncoder.createRenderPass`, which rasterizes to the full color-attachment view ignoring classic glScissor. In MC 1.21.1, `renderBlur` still uses the older `PostChain` path that respects glScissor, so per-eye blur Just Works through the existing scissor state set up by `PerEyeRenderer.scissorRaw()`.
 
 **Files:**
 - Create: `src/main/java/com/mitchellmarx/stereoscopic/render/ViewportMath.java`
-- Create: `src/main/java/com/mitchellmarx/stereoscopic/render/StereoBlur.java`
 - Create: `src/main/java/com/mitchellmarx/stereoscopic/render/PerEyeRenderer.java`
+- Create: `src/main/java/com/mitchellmarx/stereoscopic/compat/iris/PerEyeRenderTargetHooks.java` (minimal stub — full impl in Task 12)
 - Create: `src/test/java/com/mitchellmarx/stereoscopic/render/ViewportMathTest.java`
 
 - [ ] **Step 1: Port `ViewportMath.java` and its test verbatim**
 
 Pure math. Copy both files from Fabric paths to NeoForge paths.
 
-- [ ] **Step 2: Port `StereoBlur.java` and check `RenderSystem` API**
+- [ ] **Step 2: Port `PerEyeRenderer.java` with three targeted MC 1.21.1 adaptations**
 
-Read `C:\CODE\Stereoscopic\src\main\java\com\mitchellmarx\stereoscopic\render\StereoBlur.java`. The class uses `com.mojang.blaze3d.systems.RenderSystem` and `com.mojang.blaze3d.platform.GlStateManager`.
+Read `C:\CODE\Stereoscopic\src\main\java\com\mitchellmarx\stereoscopic\render\PerEyeRenderer.java`. Then apply these MC 1.21.1 adaptations:
 
-MC 1.21.1's `RenderSystem` is largely identical to 1.21.11's, but verify each method signature actually exists in the 1.21.1 mapping. If a method has changed:
-- Open the resolved Minecraft sources in the IDE (NeoForge ModDevGradle exposes them under `External Libraries` → `net.minecraft`)
-- Locate the equivalent method on the 1.21.1 class
-- Substitute the correct signature
+1. **`SimpleFramebuffer` → `TextureTarget`**. Yarn `net.minecraft.client.gl.SimpleFramebuffer` is `com.mojang.blaze3d.pipeline.TextureTarget` in MC 1.21.1 (NOT `net.minecraft.client.renderer.TextureTarget` — that path is post-1.21.6). Constructor changes from `new SimpleFramebuffer("name", w, h, true)` to `new TextureTarget(w, h, true, true)` (no name parameter, fourth arg is `clearOnLoad`). `.delete()` → `.destroyBuffers()`.
 
-Most likely target methods that haven't shifted between 1.21.1 and 1.21.11: `RenderSystem.disableDepthTest`, `RenderSystem.enableBlend`, `RenderSystem.setShaderTexture`, basic glViewport / glScissor wrappers via `RenderSystem`.
+2. **`GlStateManager` path**. Yarn 1.21.11 moves it to `com.mojang.blaze3d.opengl`; MC 1.21.1 has it at `com.mojang.blaze3d.platform.GlStateManager`. Use the `platform` path.
 
-- [ ] **Step 3: Port `PerEyeRenderer.java`**
+3. **Remove `RenderSystem.enableScissorForRenderTypeDraws` / `disableScissorForRenderTypeDraws` calls**. These were added with the MC 1.21.6 CommandEncoder pipeline; they don't exist in 1.21.1. In 1.21.1 the GuiRenderer flush still goes through the older render path that respects classic glScissor, so `scissorRaw()` alone is sufficient — drop both `*ForRenderTypeDraws` calls and replace with explanatory comments.
 
-Read `C:\CODE\Stereoscopic\src\main\java\com\mitchellmarx\stereoscopic\render\PerEyeRenderer.java`. Likely API touchpoints to verify in MC 1.21.1:
-- `net.minecraft.client.Minecraft` accessors
-- `net.minecraft.client.renderer.LevelRenderer.renderLevel(...)` signature (parameter list — check; the `DeltaTracker` / matrix / camera params have shifted across 1.20.x → 1.21.x → 1.21.11)
-- `RenderSystem.getProjectionMatrix()` / `setProjectionMatrix(...)` shape
+- [ ] **Step 3: Add minimal stub for `PerEyeRenderTargetHooks`**
 
-Port the class. Where a signature has changed, change the call site to match 1.21.1.
+`PerEyeRenderer` calls `PerEyeRenderTargetHooks.setActiveEye(int)` and `PerEyeRenderTargetHooks.irisStartFrameBetweenEyes()`. Create a minimal stub at `src/main/java/com/mitchellmarx/stereoscopic/compat/iris/PerEyeRenderTargetHooks.java` with just those two no-op methods. The full implementation lands in Task 12 (which replaces this file wholesale).
 
-- [ ] **Step 4: Run tests**
+- [ ] **Step 4: Build + test**
 
 ```bash
-cd /c/CODE/Stereoscopic-Neoforge && ./gradlew test --no-daemon
+cd /c/CODE/Stereoscopic-Neoforge && ./gradlew build --no-daemon
 ```
 
-Expected: `ViewportMathTest` passes. `StereoBlur` and `PerEyeRenderer` aren't unit-tested in the Fabric mod (they're verified via the integration runtime); the build must still compile.
+Expected: BUILD SUCCESSFUL. `ViewportMathTest` passes. `PerEyeRenderer` is not unit-tested (integration-only); build must compile.
 
-- [ ] **Step 5: Build**
-
-```bash
-./gradlew build --no-daemon
-```
-
-Expected: BUILD SUCCESSFUL.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git -C /c/CODE/Stereoscopic-Neoforge add src/main/java/com/mitchellmarx/stereoscopic/render/ src/test/java/com/mitchellmarx/stereoscopic/render/
-git -C /c/CODE/Stereoscopic-Neoforge commit -m "feat(render): port ViewportMath, StereoBlur, PerEyeRenderer + tests"
+git -C /c/CODE/Stereoscopic-Neoforge add \
+    src/main/java/com/mitchellmarx/stereoscopic/render/ \
+    src/main/java/com/mitchellmarx/stereoscopic/compat/iris/ \
+    src/test/java/com/mitchellmarx/stereoscopic/render/ \
+    docs/superpowers/plans/2026-05-29-stereoscopic-neoforge-implementation.md
+
+git -C /c/CODE/Stereoscopic-Neoforge commit -m "feat(render): ViewportMath, PerEyeRenderer + PerEyeRenderTargetHooks stub; drop StereoBlur (1.21.1 has no CommandEncoder)"
 ```
 
 ---
