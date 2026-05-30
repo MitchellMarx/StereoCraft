@@ -2,6 +2,7 @@ package com.mitchellmarx.stereoscopic;
 
 import com.mitchellmarx.stereoscopic.core.StereoOptions;
 import com.mitchellmarx.stereoscopic.cursor.StereoCursor;
+import com.mitchellmarx.stereoscopic.gui.StereoKeybindings;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
@@ -17,6 +18,7 @@ public final class Stereoscopic {
 
     public Stereoscopic(IEventBus modBus) {
         modBus.addListener(this::onClientSetup);
+        StereoKeybindings.register(modBus);
     }
 
     private void onClientSetup(FMLClientSetupEvent event) {

@@ -11,5 +11,7 @@
   "stereoscopic.options.convergence.off": "off (parallel)",
   "stereoscopic.options.convergence.blocks": "%d blocks",
   "stereoscopic.options.swap_eyes.name": "Swap eyes",
-  "stereoscopic.options.swap_eyes.tooltip": "Flip which eye's render goes to which physical eye. Toggle if depth appears inverted (objects look behind the screen when they should pop out, or vice versa), or if reflections look like they're for the opposite eye on your SBS display / VR passthrough setup."
+  "stereoscopic.options.swap_eyes.tooltip": "Flip which eye's render goes to which physical eye. Toggle if depth appears inverted (objects look behind the screen when they should pop out, or vice versa), or if reflections look like they're for the opposite eye on your SBS display / VR passthrough setup.",
+  "key.categories.stereoscopic": "Stereoscopic 3D",
+  "key.stereoscopic.options": "Open Stereoscopic Options"
 }
