@@ -47,6 +47,9 @@ public abstract class MixinSodiumWorldRenderer {
         Vec3 monoPos = StereoState.INSTANCE.getFrameMonoCameraPos();
         if (monoPos == null) return;
         Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        // Skip if Camera.entity isn't set yet — Sable's wrap on
+        // Camera.setPosition NPEs through entity.level() otherwise.
+        if (camera.getEntity() == null) return;
         stereoscopic$savedEyePos = camera.getPosition();
         ((CameraAccessor)(Object)camera).stereoscopic$setPos(monoPos);
     }

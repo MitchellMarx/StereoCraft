@@ -133,6 +133,15 @@ public abstract class MixinGameRenderer {
             return;
         }
         Camera camera = self.getMainCamera();
+        // Camera.entity is null until Camera.setup() runs. Some modpack mods
+        // (Sable) wrap Camera.setPosition and dereference entity unconditionally;
+        // shifting the camera before setup → NPE through their wrap. Skip
+        // per-eye for any frame where the camera isn't yet bound to an entity
+        // (typically just the first frame after world load).
+        if (camera.getEntity() == null) {
+            original.call(self, tickCounter);
+            return;
+        }
         Vec3 basePos = camera.getPosition();
         StereoState.INSTANCE.setFrameMonoCameraPos(basePos);
         try {
