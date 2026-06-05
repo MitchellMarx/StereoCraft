@@ -1,0 +1,22 @@
+{
+    "required": false,
+    "minVersion": "0.8",
+    "package": "com.mitchellmarx.stereoscopic.mixin.iris",
+    "compatibilityLevel": "JAVA_21",
+    "client": [
+        "MixinGlFramebuffer",
+        "MixinCameraUniforms",
+        "MixinMatrixUniforms",
+        "MixinShadowRenderer",
+        "MixinIrisRenderingPipeline",
+        "MixinIrisLodRenderProgram",
+        "MixinDHCompat",
+        "MixinRenderTargets",
+        "MixinFinalPassRenderer",
+        "MixinSamplerBinding",
+        "MixinIrisRenderSystem",
+        "MixinProgramUniforms"
+    ],
+    "mixins": [],
+    "injectors": { "defaultRequire": 0 }
+}

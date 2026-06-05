@@ -1,0 +1,21 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "com.mitchellmarx.stereoscopic.mixin",
+    "compatibilityLevel": "JAVA_21",
+    "client": [
+        "minecraft.MixinMinecraftClient",
+        "minecraft.MixinGameRenderer",
+        "minecraft.MixinRenderSystem",
+        "minecraft.MixinGlStateManager",
+        "minecraft.MixinFramebuffer",
+        "minecraft.MixinMouse",
+        "minecraft.MixinScreen",
+        "minecraft.MixinCubeMap",
+        "minecraft.CameraAccessor",
+        "minecraft.MouseAccessor",
+        "sodium.MixinSodiumWorldRenderer"
+    ],
+    "mixins": [],
+    "injectors": { "defaultRequire": 1 }
+}

@@ -1,0 +1,17 @@
+{
+  "stereoscopic.options.group.name": "Stereoscopic",
+  "stereoscopic.options.mode.name": "Mode",
+  "stereoscopic.options.mode.tooltip": "Selects the stereoscopic output mode. SBS Half splits the framebuffer left/right at half horizontal resolution per eye, suitable for VR virtual-monitor passthrough and 3D SBS displays.",
+  "stereoscopic.options.mode.off": "Off",
+  "stereoscopic.options.mode.sbs_half": "SBS Half",
+  "stereoscopic.options.ipd.name": "IPD (meters)",
+  "stereoscopic.options.ipd.tooltip": "Interpupillary distance — the horizontal eye separation used to compute per-eye camera offset. Default 0.064 m matches the human-average IPD; the 55–75 mm slider range covers ~99% of adults comfortably.",
+  "stereoscopic.options.convergence.name": "Convergence distance",
+  "stereoscopic.options.convergence.tooltip": "Off-axis convergence depth in blocks. Objects at this depth sit at the screen plane (zero parallax); closer objects pop out, farther ones recede. 0 = parallel-axis (no shear, everything pops out).",
+  "stereoscopic.options.convergence.off": "off (parallel)",
+  "stereoscopic.options.convergence.blocks": "%d blocks",
+  "stereoscopic.options.swap_eyes.name": "Swap eyes",
+  "stereoscopic.options.swap_eyes.tooltip": "Flip which eye's render goes to which physical eye. Toggle if depth appears inverted (objects look behind the screen when they should pop out, or vice versa), or if reflections look like they're for the opposite eye on your SBS display / VR passthrough setup.",
+  "key.categories.stereoscopic": "Stereoscopic 3D",
+  "key.stereoscopic.options": "Open Stereoscopic Options"
+}

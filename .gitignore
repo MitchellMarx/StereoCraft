@@ -1,0 +1,29 @@
+# Build outputs
+build/
+out/
+.gradle/
+*.jar.tmp
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Local env
+.env
+.env.local
+
+# Local dev scaffolding — design notes/plans/specs and decompiled third-party
+# reference bytecode. Kept locally as a dev aid; not part of the distributed mod.
+docs/superpowers/
+/xaero/

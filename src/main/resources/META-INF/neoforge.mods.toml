@@ -1,0 +1,52 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "LGPL-3.0-only"
+issueTrackerURL = "https://github.com/MitchellMarx/Stereoscopic-Neoforge/issues"
+
+[[mods]]
+modId = "stereoscopic"
+version = "${version}"
+displayName = "StereoCraft: Stereoscopic 3D (NeoForge)"
+authors = "Mitchell Marx"
+description = '''
+Side-by-side (SBS) stereoscopic 3D rendering for 3D TVs, 3D monitors, and SBS-compatible displays. NeoForge 1.21.1 port.
+'''
+displayURL = "https://github.com/MitchellMarx/Stereoscopic-Neoforge"
+# logoFile is read from the jar root by NeoForge's mods-list display;
+# assets/stereoscopic/icon.png is the same image served via the asset path
+# for in-game mod-display lookups. The two paths are intentional duplicates.
+logoFile = "icon.png"
+
+[[mixins]]
+config = "stereoscopic.mixins.json"
+
+[[mixins]]
+config = "stereoscopic-iris.mixins.json"
+
+[[dependencies.stereoscopic]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${neoforge_version},22)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.stereoscopic]]
+modId = "minecraft"
+type = "required"
+versionRange = "[${minecraft_version},1.21.2)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.stereoscopic]]
+modId = "sodium"
+type = "required"
+versionRange = "[${sodium_version},0.7)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.stereoscopic]]
+modId = "iris"
+type = "optional"
+versionRange = "[${iris_version},1.9)"
+ordering = "AFTER"
+side = "CLIENT"
