@@ -52,15 +52,11 @@ dependencies {
     compileOnly("maven.modrinth:iris:${project.property("iris_version")}+${project.property("minecraft_version")}-neoforge")
     runtimeOnly("maven.modrinth:iris:${project.property("iris_version")}+${project.property("minecraft_version")}-neoforge")
 
-    // Voxy: deferred. No NeoForge build with an Iris module exists yet;
-    // j-shelfwood/voxy-neoforge excludes iris from its jar. Re-add as
-    // compileOnly when a usable Voxy + Iris combination is sourced.
-
     // SodiumOptionsAPI + Forgified Fabric API: optional soft deps from the
     // Aeronautics modpack (no Modrinth maven for SOAPI). SOAPI's OptionGUIConstruction.EVENT
     // is a net.fabricmc.fabric.api.event.Event which lives in forgified-fabric-api.
     val soapiJarPath = (project.findProperty("stereoscopic.soapiJar") as String?)
-        ?: "C:/Users/felix/curseforge/minecraft/Instances/All of Create - Aeronautics (3)/mods/sodiumoptionsapi-neoforge-1.0.10-1.21.1.jar"
+        ?: "C:/Users/felix/curseforge/minecraft/Instances/All of Create - Aeronautics (2)/mods/sodiumoptionsapi-neoforge-1.0.10-1.21.1.jar"
     // fabric-api-base is shipped jarjar'd inside forgified-fabric-api.
     // We extracted it once to libs/ so compileOnly can resolve net.fabricmc.fabric.api.event.Event
     // without unpacking the parent each build. The actual classes come from forgified-fabric-api
@@ -107,7 +103,7 @@ tasks.test { useJUnitPlatform() }
 // --- Deploy hook (mirrors Fabric mod's pattern) ---
 val testInstanceMods = file(
     (project.findProperty("stereoscopic.deployDir") as String?)
-        ?: "C:/Users/felix/curseforge/minecraft/Instances/All of Create - Aeronautics (3)/mods"
+        ?: "C:/Users/felix/curseforge/minecraft/Instances/All of Create - Aeronautics (2)/mods"
 )
 
 val copyToTestInstance by tasks.registering(Copy::class) {

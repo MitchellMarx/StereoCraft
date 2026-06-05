@@ -147,18 +147,103 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
     }
 
     @Override
+    public String stereoscopic$diagDumpState() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("enabled=").append(stereoscopic$enabled)
+          .append(",activeEye=").append(stereoscopic$activeEye)
+          .append(",depthTex=").append(currentDepthTexture);
+        if (stereoscopic$leftNoTranslucents != null) {
+            sb.append(",leftNoTrans=").append(stereoscopic$leftNoTranslucents.getTextureId());
+        }
+        if (stereoscopic$rightNoTranslucents != null) {
+            sb.append(",rightNoTrans=").append(stereoscopic$rightNoTranslucents.getTextureId());
+        }
+        sb.append(",curNoTrans=").append(noTranslucents != null ? noTranslucents.getTextureId() : -1);
+        sb.append(",curNoTransIsRight=").append(noTranslucents == stereoscopic$rightNoTranslucents);
+        // Sample colortex 0..3 main+alt for current bank vs other bank
+        for (int i = 0; i < Math.min(4, targets.length); i++) {
+            RenderTarget left = targets[i];
+            RenderTarget right = stereoscopic$rightTargets != null ? stereoscopic$rightTargets[i] : null;
+            sb.append(",c").append(i);
+            if (left != null) sb.append("L=").append(left.getMainTexture()).append("/").append(left.getAltTexture());
+            if (right != null) sb.append("R=").append(right.getMainTexture()).append("/").append(right.getAltTexture());
+        }
+        // Scan every owned framebuffer; flag any FB that holds an attachment
+        // whose ID is in reverseMap but on the WRONG eye's bank for the
+        // current activeEye. That's exactly the bug pattern — an Iris FB
+        // that setActiveEye missed (or that something else re-attached
+        // mid-frame to a stale bank).
+        sb.append(",ownedFBs=").append(ownedFramebuffers.size());
+        int mismatchCount = 0;
+        StringBuilder mismatches = new StringBuilder();
+        int fbIdx = 0;
+        for (GlFramebuffer fb : ownedFramebuffers) {
+            Int2IntMap attMap = ((MixinGlFramebuffer)(Object) fb).stereoscopic$getAttachments();
+            int[] keys = attMap.keySet().toIntArray();
+            for (int k : keys) {
+                int texId = attMap.get(k);
+                int meta = stereoscopic$reverseMap.get(texId);
+                if (meta < 0) continue;
+                int slot = meta >>> 1;
+                boolean isAlt = (meta & 1) == 1;
+                if (slot >= targets.length) continue;
+                RenderTarget expectedRt = (stereoscopic$activeEye == 0)
+                    ? targets[slot]
+                    : (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[slot] : null);
+                if (expectedRt == null) continue;
+                int expectedId = isAlt ? expectedRt.getAltTexture() : expectedRt.getMainTexture();
+                if (expectedId != texId) {
+                    mismatchCount++;
+                    if (mismatchCount <= 5) {
+                        mismatches.append(" fb").append(fbIdx)
+                            .append("@slot").append(k)
+                            .append("=").append(texId)
+                            .append("(want=").append(expectedId)
+                            .append(",cTex").append(slot).append(isAlt ? "alt" : "main")
+                            .append(")");
+                    }
+                }
+            }
+            fbIdx++;
+        }
+        sb.append(",mismatch=").append(mismatchCount).append(mismatches);
+        return sb.toString();
+    }
+
+    @Override
     public int stereoscopic$resolveActiveEyeTexId(int referenceTexId) {
         if (!stereoscopic$enabled) return referenceTexId;
         int meta = stereoscopic$reverseMap.get(referenceTexId);
-        if (meta < 0) return referenceTexId;
-        int colortexIdx = meta >>> 1;
-        boolean isAlt = (meta & 1) == 1;
-        if (colortexIdx < 0 || colortexIdx >= targets.length) return referenceTexId;
-        RenderTarget rt = (stereoscopic$activeEye == 0)
-            ? targets[colortexIdx]
-            : (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[colortexIdx] : null);
-        if (rt == null) return referenceTexId;
-        return isAlt ? rt.getAltTexture() : rt.getMainTexture();
+        if (meta >= 0) {
+            int colortexIdx = meta >>> 1;
+            boolean isAlt = (meta & 1) == 1;
+            if (colortexIdx < 0 || colortexIdx >= targets.length) return referenceTexId;
+            RenderTarget rt = (stereoscopic$activeEye == 0)
+                ? targets[colortexIdx]
+                : (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[colortexIdx] : null);
+            if (rt == null) return referenceTexId;
+            return isAlt ? rt.getAltTexture() : rt.getMainTexture();
+        }
+        // noTranslucents / noHand depth textures: shader-pack reflection,
+        // shadow, and ambient-occlusion samplers bind to these via cached
+        // IntSuppliers at pipeline init. Without remap the RIGHT eye samples
+        // LEFT-bank depth and depth-test fails on view-dependent fragments,
+        // surfacing as skybox-color flashes through textures.
+        if (stereoscopic$leftNoTranslucents != null && stereoscopic$rightNoTranslucents != null) {
+            int leftNoTransId  = stereoscopic$leftNoTranslucents.getTextureId();
+            int rightNoTransId = stereoscopic$rightNoTranslucents.getTextureId();
+            if (referenceTexId == leftNoTransId || referenceTexId == rightNoTransId) {
+                return stereoscopic$activeEye == 0 ? leftNoTransId : rightNoTransId;
+            }
+        }
+        if (stereoscopic$leftNoHand != null && stereoscopic$rightNoHand != null) {
+            int leftNoHandId  = stereoscopic$leftNoHand.getTextureId();
+            int rightNoHandId = stereoscopic$rightNoHand.getTextureId();
+            if (referenceTexId == leftNoHandId || referenceTexId == rightNoHandId) {
+                return stereoscopic$activeEye == 0 ? leftNoHandId : rightNoHandId;
+            }
+        }
+        return referenceTexId;
     }
 
     @Override
@@ -187,10 +272,6 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
                 }
             }
         }
-
-        // Voxy compat hook: no-op when Voxy is absent. v0.1.0 ships without
-        // Voxy compileOnly so the call is removed; reintroduce in v0.1.x when
-        // the Voxy dep is sourced.
 
         DepthTexture activeNoTrans = (eyeIndex == 0) ? stereoscopic$leftNoTranslucents : stereoscopic$rightNoTranslucents;
         DepthTexture activeNoHand  = (eyeIndex == 0) ? stereoscopic$leftNoHand          : stereoscopic$rightNoHand;

@@ -12,7 +12,10 @@
         "MixinIrisLodRenderProgram",
         "MixinDHCompat",
         "MixinRenderTargets",
-        "MixinFinalPassRenderer"
+        "MixinFinalPassRenderer",
+        "MixinSamplerBinding",
+        "MixinIrisRenderSystem",
+        "MixinProgramUniforms"
     ],
     "mixins": [],
     "injectors": { "defaultRequire": 0 }

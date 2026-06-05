@@ -45,7 +45,8 @@ public final class StereoOptionsIO {
             }
             if (obj.has("convergence")) {
                 float v = obj.get("convergence").getAsFloat();
-                target.convergence = Math.max(0f, Math.min(16f, v));
+                // Range matches the GUI sliders (0-32 blocks).
+                target.convergence = Math.max(0f, Math.min(32f, v));
             }
             if (obj.has("swapEyes")) {
                 target.swapEyes = obj.get("swapEyes").getAsBoolean();

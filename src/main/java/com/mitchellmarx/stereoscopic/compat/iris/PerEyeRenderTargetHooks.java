@@ -67,6 +67,14 @@ public final class PerEyeRenderTargetHooks {
          * inactive.
          */
         int stereoscopic$resolveActiveEyeTexId(int referenceTexId);
+
+        /**
+         * Diag: dump the current per-eye bank state for a sample of slots.
+         * Used by {@code MixinIrisRenderingPipeline.beginTranslucents} to log
+         * per-eye state at composite-entry time so we can correlate shader
+         * flicker to whichever slot mis-attaches.
+         */
+        String stereoscopic$diagDumpState();
     }
 
     public static int getActiveEye() {
@@ -130,6 +138,14 @@ public final class PerEyeRenderTargetHooks {
         }
     }
 
+    public static String diagDumpState() {
+        if (!IRIS_PRESENT) return "iris=off";
+        EyeAwareRenderTargets t = activeTargets;
+        if (t == null) return "iris=on,targets=null";
+        try { return t.stereoscopic$diagDumpState(); }
+        catch (Throwable th) { return "diag-failed:" + th; }
+    }
+
     /**
      * Advance Iris's {@code SystemTimeUniforms.COUNTER} between LEFT and RIGHT
      * eye renderLevel iters so each eye's {@code ProgramUniforms.update()} sees
@@ -141,13 +157,27 @@ public final class PerEyeRenderTargetHooks {
      * the inter-eye wall-clock delta (~5–15ms) advances {@code frameTimeCounter}
      * and re-samples the sun interpolation factor.
      */
+    /**
+     * No-op since per-eye PER_FRAME refresh moved to
+     * {@code MixinProgramUniforms.stereoscopic$invalidateOnEyeSwitch}, which
+     * triggers refresh on the eye-switch boundary inside Iris itself without
+     * mutating {@code SystemTimeUniforms.COUNTER}.
+     *
+     * <p>Bumping COUNTER worked for matrix/camera refresh but also made the
+     * shader-visible {@code frameCounter} (and {@code framemod2/4/8/600}, and
+     * {@code goldenRatio * mod(float(frameCounter), 3600.0)} dither salts)
+     * differ between eyes — every per-pixel stochastic branch landed on
+     * opposite sides on LEFT vs RIGHT, producing per-eye intensity divergence
+     * that surfaces as the persistent right-eye wash-out across all shader
+     * presets (the dither sites are in the always-on dither / lightmap / fog
+     * blocks, so disabling TAA / reflections / voxel lighting doesn't help).
+     *
+     * <p>Kept as a public symbol because
+     * {@link com.mitchellmarx.stereoscopic.render.PerEyeRenderer#runForEachEye}
+     * still calls it; turning it into a no-op is the safe minimum change.
+     */
     public static void irisStartFrameBetweenEyes() {
-        if (!IRIS_PRESENT) return;
-        try {
-            irisDoStartFrame();
-        } catch (Throwable t) {
-            Stereoscopic.LOG.warn("Iris inter-eye COUNTER bump failed; right eye may read left's PER_FRAME uniforms this frame", t);
-        }
+        // Intentionally empty. See javadoc.
     }
 
     private static void irisDoStartFrame() {

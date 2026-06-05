@@ -47,18 +47,20 @@ public abstract class MixinSodiumWorldRenderer {
         Vec3 monoPos = StereoState.INSTANCE.getFrameMonoCameraPos();
         if (monoPos == null) return;
         Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
-        // Skip if Camera.entity isn't set yet — Sable's wrap on
-        // Camera.setPosition NPEs through entity.level() otherwise.
-        if (camera.getEntity() == null) return;
         stereoscopic$savedEyePos = camera.getPosition();
-        ((CameraAccessor)(Object)camera).stereoscopic$setPos(monoPos);
+        CameraAccessor acc = (CameraAccessor)(Object)camera;
+        acc.stereoscopic$setPositionField(monoPos);
+        acc.stereoscopic$getBlockPositionField().set(monoPos.x, monoPos.y, monoPos.z);
     }
 
     @Inject(method = "setupTerrain", at = @At("RETURN"))
     private void stereoscopic$restoreEyePosAfterSetup(CallbackInfo ci) {
         if (stereoscopic$savedEyePos == null) return;
         Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
-        ((CameraAccessor)(Object)camera).stereoscopic$setPos(stereoscopic$savedEyePos);
+        Vec3 p = stereoscopic$savedEyePos;
+        CameraAccessor acc = (CameraAccessor)(Object)camera;
+        acc.stereoscopic$setPositionField(p);
+        acc.stereoscopic$getBlockPositionField().set(p.x, p.y, p.z);
         stereoscopic$savedEyePos = null;
     }
 }

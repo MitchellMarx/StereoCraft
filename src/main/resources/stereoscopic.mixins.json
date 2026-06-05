@@ -10,6 +10,8 @@
         "minecraft.MixinGlStateManager",
         "minecraft.MixinFramebuffer",
         "minecraft.MixinMouse",
+        "minecraft.MixinScreen",
+        "minecraft.MixinCubeMap",
         "minecraft.CameraAccessor",
         "minecraft.MouseAccessor",
         "sodium.MixinSodiumWorldRenderer"

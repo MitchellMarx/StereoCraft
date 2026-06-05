@@ -77,14 +77,14 @@ class StereoOptionsIOTest {
         Files.writeString(hi, "{ \"convergence\": 99.0 }");
         StereoOptions loadedHi = new StereoOptions();
         StereoOptionsIO.readInto(hi, loadedHi);
-        assertEquals(16.0f, loadedHi.convergence, 1e-6f,
-            "convergence clamped to [0, 16]");
+        assertEquals(32.0f, loadedHi.convergence, 1e-6f,
+            "convergence clamped to [0, 32]");
 
         Path lo = tmp.resolve("lo.json");
         Files.writeString(lo, "{ \"convergence\": -5.0 }");
         StereoOptions loadedLo = new StereoOptions();
         StereoOptionsIO.readInto(lo, loadedLo);
         assertEquals(0.0f, loadedLo.convergence, 1e-6f,
-            "convergence clamped to [0, 16]; 0 = parallel-axis");
+            "convergence clamped to [0, 32]; 0 = parallel-axis");
     }
 }

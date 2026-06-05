@@ -22,3 +22,8 @@ logs/
 # Local env
 .env
 .env.local
+
+# Local dev scaffolding — design notes/plans/specs and decompiled third-party
+# reference bytecode. Kept locally as a dev aid; not part of the distributed mod.
+docs/superpowers/
+/xaero/

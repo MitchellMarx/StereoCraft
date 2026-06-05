@@ -45,7 +45,6 @@ You can also edit `config/stereoscopic-options.json` manually — the format is 
 
 ## Known limitations
 
-- **Voxy compat deferred to v0.1.x**: no NeoForge Voxy build with iris module currently exists. The community port `j-shelfwood/voxy-neoforge` excludes its iris module from the jar.
 - **Async cursor presents Windows-only**: cursor mirror uses Win32 cursor APIs. Linux/macOS shows the cursor in only one eye while a GUI is open.
 - **Iris pipeline first-frame rebuild**: on world load with shaders already on, Iris loads its pipeline once before our stereo state is published. We auto-trigger a rebuild on the first stereo-active frame — you may see a one-frame flash.
 - **Sodium chunk-visibility cull**: BFS skipped on the second eye (chunks visible to one eye are visible to the other at typical IPD). At extreme IPD / convergence near a chunk boundary you might see a missing-chunk artifact for one frame.
