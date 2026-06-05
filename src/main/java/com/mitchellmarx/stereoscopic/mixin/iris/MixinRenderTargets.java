@@ -15,7 +15,7 @@ import net.irisshaders.iris.shaderpack.properties.PackDirectives;
 import net.irisshaders.iris.shaderpack.properties.PackRenderTargetDirectives;
 import net.irisshaders.iris.targets.RenderTarget;
 import net.irisshaders.iris.targets.RenderTargets;
-import net.minecraft.client.texture.GlTexture;
+import com.mojang.blaze3d.opengl.GlTexture;
 import org.joml.Vector2i;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -303,7 +303,7 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
         if (tex == null) return 0;
         // Direct cast — survives Loom intermediary remap. Reflection by yarn
         // name would silently fail in production.
-        if (tex instanceof GlTexture gl) return gl.getGlId();
+        if (tex instanceof GlTexture gl) return gl.glId();
         Stereoscopic.LOG.warn("[stereo] glId extraction failed for non-GlTexture {}; depth-rebind guard skipped",
             tex.getClass().getName());
         return 0;

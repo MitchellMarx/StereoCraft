@@ -1,6 +1,5 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
-import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mitchellmarx.stereoscopic.Stereoscopic;
@@ -9,16 +8,17 @@ import com.mitchellmarx.stereoscopic.core.StereoMath;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.cursor.StereoCursor;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
+import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.textures.GpuTexture;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.gl.SimpleFramebuffer;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.GameRenderer;
-import net.minecraft.client.render.RenderTickCounter;
-import net.minecraft.client.texture.GlTexture;
-import net.minecraft.client.util.Window;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector3fc;
 import org.lwjgl.opengl.GL11;
@@ -33,15 +33,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(GameRenderer.class)
 public abstract class MixinGameRenderer {
 
-    @Shadow @Final private MinecraftClient client;
+    @Shadow @Final private Minecraft minecraft;
+
+    @Shadow public abstract net.minecraft.client.renderer.state.GameRenderState getGameRenderState();
+
+    @Shadow public abstract Camera getMainCamera();
 
     /** True once we've forced Iris's pipeline to rebuild after first stereo activation. */
     private static boolean stereoscopic$irisRebuiltForStereo = false;
 
-    @Inject(method = "render(Lnet/minecraft/client/render/RenderTickCounter;Z)V", at = @At("HEAD"))
-    private void stereoscopic$beginFrame(RenderTickCounter tracker, boolean tick, CallbackInfo ci) {
-        Window w = client.getWindow();
-        StereoState.INSTANCE.beginFrame(w.getFramebufferWidth(), w.getFramebufferHeight());
+    @Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("HEAD"))
+    private void stereoscopic$beginFrame(DeltaTracker tracker, boolean tick, CallbackInfo ci) {
+        Window w = minecraft.getWindow();
+        StereoState.INSTANCE.beginFrame(w.getWidth(), w.getHeight());
         StereoCursor.tick();
         stereoscopic$ensureIrisRebuiltForStereo();
     }
@@ -51,128 +55,94 @@ public abstract class MixinGameRenderer {
      * at game launch, Iris's pipeline init runs before our scratch-FB + per-eye
      * RenderTargets ever fire. The cached pipeline state breaks per-eye world
      * rendering, and the user has to toggle shaders off+on to force a rebuild.
-     * The Sodium options-page Mode binding already drives
-     * {@link PerEyeRenderTargetHooks#rebuildPipelineForStereoToggle()} on each
-     * toggle; replicate the same trigger once on the first stereo-active frame
-     * so startup-with-stereo-already-on works without manual intervention.
+     * Replicate the toggle trigger once on the first stereo-active frame so
+     * startup-with-stereo-already-on works without manual intervention.
      */
     private void stereoscopic$ensureIrisRebuiltForStereo() {
         if (stereoscopic$irisRebuiltForStereo) return;
         if (!StereoState.INSTANCE.isActive()) return;
-        if (client.world == null) return;
+        if (minecraft.level == null) return;
         PerEyeRenderTargetHooks.rebuildPipelineForStereoToggle();
         stereoscopic$irisRebuiltForStereo = true;
     }
 
-    /**
-     * Off-axis frustum shear applied to each eye's projection. Skews the
-     * matrix so the eye's view converges toward the configured convergence
-     * distance: objects at that depth sit at the screen plane (zero parallax),
-     * closer objects pop out, farther ones recede.
-     *
-     * <p>This is a new feature relative to the Angelica reference. Both
-     * Angelica trees (sbs2 mod-on-modern, and the older fork-style port) use
-     * parallel-axis stereo and explicitly disable any per-eye projection shear
-     * - see {@code angelica$applyStereoProjectionOffset} in Angelica-sbs2's
-     * {@code MixinEntityRenderer_StereoCamera}, which fences the shear behind
-     * {@code if (true) return} with the rationale "parallel-axis stereo
-     * avoids the asymmetric-frustum gap between eyes". This mod ships
-     * off-axis ON by default; the justification lives on
-     * {@link com.mitchellmarx.stereoscopic.core.StereoOptions#convergence}.
-     *
-     * <p>The math is in {@link StereoMath#convergenceShear(float, float)} -
-     * see that JavaDoc for the full sign derivation. The sign of
-     * {@code StereoState.getEyeOffset()} is opposite to Angelica's
-     * ({@code -ipd/2} for LEFT here vs {@code +ipd/2} there); the formula
-     * carries the sign through correctly for both conventions.
-     *
-     * <p>Callsite coverage: {@code GameRenderer.getBasicProjectionMatrix} is
-     * called from {@code renderWorld} (the per-eye-wrapped path that triggers
-     * this shear via {@code isInWorldPass()}) and from item/hand model
-     * projection setup. The {@code isInWorldPass()} gate intentionally skips
-     * the latter - first-person item/hand projection is set up outside the
-     * per-eye loop, so it stays at the un-sheared center projection. Stereo
-     * separation for first-person hand still comes from the camera offset
-     * applied in {@code stereoscopic$twoPassRenderWorld}.
-     */
-    @ModifyReturnValue(method = "getBasicProjectionMatrix(F)Lorg/joml/Matrix4f;", at = @At("RETURN"))
-    private Matrix4f stereoscopic$applyConvergenceShear(Matrix4f proj) {
-        StereoState s = StereoState.INSTANCE;
-        if (!s.isActive() || !s.isInWorldPass()) return proj;
-        return StereoMath.applyConvergenceShear(proj, s.getEyeOffset(), s.getFrameConvergence());
-    }
-
-    @Inject(method = "render(Lnet/minecraft/client/render/RenderTickCounter;Z)V", at = @At("RETURN"))
-    private void stereoscopic$endFrame(RenderTickCounter tracker, boolean tick, CallbackInfo ci) {
+    @Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("RETURN"))
+    private void stereoscopic$endFrame(DeltaTracker tracker, boolean tick, CallbackInfo ci) {
         StereoState.INSTANCE.endFrame();
     }
 
     /**
-     * Per-eye renderWorld wrap. Shifts {@code Camera.pos} by ±(ipd/2) along the
-     * camera's local right vector so every downstream consumer of
-     * {@code camera.getCameraPos()} (Sodium chunk transforms, frustum culling,
-     * Iris's {@code cameraPosition} uniform, the cameraRenderState snapshot
-     * inside renderWorld) sees the per-eye position. Renders into a full-FB
-     * scratch FB substituted via {@link MixinMinecraftClient}'s
-     * {@code getFramebuffer()} HEAD inject, then blits scratch → MC main FB at
-     * the eye rect with {@code GL_LINEAR} (horizontal squish for SBS_HALF).
+     * Per-eye renderLevel wrap, redesigned for MC 26.x's render-state extraction
+     * model. World rendering reads the immutable {@code CameraRenderState}
+     * (snapshotted once per frame by {@code extract()}), NOT the live Camera /
+     * GameRenderer, so the old "shift Camera.pos via CameraAccessor + shear
+     * getBasicProjectionMatrix" approach no longer reaches the world render
+     * (and getBasicProjectionMatrix no longer exists). Instead, between eyes we
+     * mutate {@code cameraRenderState.pos} (eye offset) and
+     * {@code cameraRenderState.projectionMatrix} (convergence shear) — both the
+     * GPU projection UBO upload and the Matrix4fc handed to LevelRenderer read
+     * from that state. Renders into a full-FB scratch FB (substituted via
+     * {@link MixinMinecraftClient}'s {@code getMainRenderTarget()} HEAD inject),
+     * then blits scratch -> MC main FB at the eye rect with {@code GL_LINEAR}.
      */
     @WrapOperation(
-        method = "render(Lnet/minecraft/client/render/RenderTickCounter;Z)V",
+        method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
         at = @At(value = "INVOKE",
-                 target = "Lnet/minecraft/client/render/GameRenderer;renderWorld(Lnet/minecraft/client/render/RenderTickCounter;)V")
+                 target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;)V")
     )
-    private void stereoscopic$twoPassRenderWorld(
+    private void stereoscopic$twoPassRenderLevel(
             GameRenderer self,
-            RenderTickCounter tickCounter,
+            DeltaTracker deltaTracker,
             Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) {
-            original.call(self, tickCounter);
+            original.call(self, deltaTracker);
             return;
         }
-        Camera camera = self.getCamera();
-        Vec3d basePos = camera.getCameraPos();
+        CameraRenderState crs = getGameRenderState().levelRenderState.cameraRenderState;
+        Camera camera = getMainCamera();
+        Vec3 basePos = crs.pos;
+        Matrix4f baseProj = new Matrix4f(crs.projectionMatrix);
         // Mono pos cached so shared passes (Iris shadow render, Sodium chunk
         // setup) can restore it for their duration — they must use the
         // un-IPD-shifted center, not either eye's offset position.
         StereoState.INSTANCE.setFrameMonoCameraPos(basePos);
         try {
             // Null-FB guard hoisted OUTSIDE the per-eye lambda: if checked
-            // inside, a transient null would double-invoke original.call
-            // (once per eye) with the IPD-shifted camera persisting between
-            // calls, since the outer finally only restores at the very end.
-            Framebuffer outerCheckFb = this.client.getFramebuffer();
-            if (outerCheckFb == null || outerCheckFb.getColorAttachment() == null) {
-                original.call(self, tickCounter);
+            // inside, a transient null would double-invoke original.call.
+            RenderTarget outerCheckFb = this.minecraft.getMainRenderTarget();
+            if (outerCheckFb == null || outerCheckFb.getColorTexture() == null) {
+                original.call(self, deltaTracker);
                 return;
             }
             PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.WORLD, () -> {
-                Framebuffer realMainFb = this.client.getFramebuffer();
-                int w = realMainFb.textureWidth;
-                int h = realMainFb.textureHeight;
-                SimpleFramebuffer scratch = PerEyeRenderer.ensureScratchFb(w, h);
+                RenderTarget realMainFb = this.minecraft.getMainRenderTarget();
+                int w = realMainFb.width;
+                int h = realMainFb.height;
+                TextureTarget scratch = PerEyeRenderer.ensureScratchFb(w, h);
 
-                // Axis: getDiagonalPlane is the local RIGHT vector (X-axis
-                // after camera rotation). getHorizontalPlane is forward, not
-                // right — the names mislead. See feedback_camera_plane_naming.
-                // Sign: getEyeOffset() returns -ipd/2 for LEFT, +ipd/2 for
-                // RIGHT — LEFT shifts along the negative right-vector to sit
-                // at the physical left eye's position.
+                // Eye offset along the camera's local RIGHT vector. 26.x Camera
+                // exposes leftVector() (= -right); negate to get right. Sign:
+                // getEyeOffset() returns -ipd/2 for LEFT, +ipd/2 for RIGHT, so
+                // LEFT shifts along -right to sit at the physical left eye.
                 float dx = StereoState.INSTANCE.getEyeOffset();
-                Vector3fc right = camera.getDiagonalPlane();
-                Vec3d eyePos = basePos.add(right.x() * dx, right.y() * dx, right.z() * dx);
-                ((CameraAccessor)(Object)camera).stereoscopic$setPos(eyePos);
+                Vector3fc left = camera.leftVector();
+                crs.pos = basePos.add(-left.x() * dx, -left.y() * dx, -left.z() * dx);
+                // Off-axis convergence shear on a fresh copy of the mono
+                // projection (applyConvergenceShear mutates in place).
+                crs.projectionMatrix = StereoMath.applyConvergenceShear(
+                    new Matrix4f(baseProj), dx, StereoState.INSTANCE.getFrameConvergence());
 
                 PerEyeRenderer.setScratchFbActive(true);
                 try {
-                    original.call(self, tickCounter);
+                    original.call(self, deltaTracker);
                 } finally {
                     PerEyeRenderer.setScratchFbActive(false);
                 }
                 stereoscopic$blitScratchToMain(scratch, realMainFb, w, h);
             });
         } finally {
-            ((CameraAccessor)(Object)camera).stereoscopic$setPos(basePos);
+            crs.pos = basePos;
+            crs.projectionMatrix = baseProj;
             StereoState.INSTANCE.setFrameMonoCameraPos(null);
         }
     }
@@ -181,13 +151,13 @@ public abstract class MixinGameRenderer {
      * Raw {@code glBlitFramebuffer} (not {@code CommandEncoder.copyTextureToTexture})
      * — that forces {@code GL_NEAREST} and same-size copy, neither acceptable here.
      */
-    private static void stereoscopic$blitScratchToMain(SimpleFramebuffer scratch,
-                                                        Framebuffer mainFb,
+    private static void stereoscopic$blitScratchToMain(TextureTarget scratch,
+                                                        RenderTarget mainFb,
                                                         int scratchW, int scratchH) {
-        if (scratch == null || scratch.getColorAttachment() == null) return;
-        if (mainFb == null || mainFb.getColorAttachment() == null) return;
-        int scratchTex = stereoscopic$extractGlId(scratch.getColorAttachment());
-        int mainTex = stereoscopic$extractGlId(mainFb.getColorAttachment());
+        if (scratch == null || scratch.getColorTexture() == null) return;
+        if (mainFb == null || mainFb.getColorTexture() == null) return;
+        int scratchTex = stereoscopic$extractGlId(scratch.getColorTexture());
+        int mainTex = stereoscopic$extractGlId(mainFb.getColorTexture());
         if (scratchTex == 0 || mainTex == 0) return;
         StereoState s = StereoState.INSTANCE;
 
@@ -234,13 +204,11 @@ public abstract class MixinGameRenderer {
     }
 
     /**
-     * Direct cast + call - NOT reflection by yarn-name. {@code getField("glId")}
-     * silently fails in production because Loom doesn't remap reflection string
-     * literals; the runtime field name is {@code field_XXXXX}. See
+     * Direct cast + call - NOT reflection by name. See
      * feedback_no_reflection_by_yarn_name.
      */
     private static int stereoscopic$extractGlId(GpuTexture tex) {
-        if (tex instanceof GlTexture gl) return gl.getGlId();
+        if (tex instanceof GlTexture gl) return gl.glId();
         Stereoscopic.LOG.warn("[scratch-blit] glId extraction failed for non-GlTexture {}; eye blit will skip",
             tex.getClass().getName());
         return 0;

@@ -1,6 +1,6 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
-import net.minecraft.client.Mouse;
+import net.minecraft.client.MouseHandler;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
@@ -11,8 +11,8 @@ import org.spongepowered.asm.mixin.gen.Accessor;
  * mixin requires interface target" check at PREPARE since {@code Mouse} is
  * a class.
  */
-@Mixin(Mouse.class)
+@Mixin(MouseHandler.class)
 public interface MouseAccessor {
-    @Accessor("x") void stereoscopic$setX(double v);
-    @Accessor("y") void stereoscopic$setY(double v);
+    @Accessor("xpos") void stereoscopic$setX(double v);
+    @Accessor("ypos") void stereoscopic$setY(double v);
 }

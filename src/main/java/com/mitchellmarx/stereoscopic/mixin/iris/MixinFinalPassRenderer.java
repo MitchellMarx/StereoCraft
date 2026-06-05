@@ -13,9 +13,9 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.textures.TextureFormat;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.irisshaders.iris.pipeline.FinalPassRenderer;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.Framebuffer;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 import org.spongepowered.asm.mixin.Mixin;
@@ -105,7 +105,7 @@ public abstract class MixinFinalPassRenderer {
 
     @Unique
     private static int stereoscopic$extractGlId(GpuTexture tex) {
-        if (tex instanceof net.minecraft.client.texture.GlTexture gl) return gl.getGlId();
+        if (tex instanceof com.mojang.blaze3d.opengl.GlTexture gl) return gl.glId();
         Stereoscopic.LOG.warn("[final-pass] glId extraction failed for non-GlTexture {}; scratch will not bind",
             tex.getClass().getName());
         return 0;
@@ -139,9 +139,9 @@ public abstract class MixinFinalPassRenderer {
         stereoscopic$pendingBlit = false;
         if (!stereoscopic$eyeActive()) return;
         StereoState s = StereoState.INSTANCE;
-        Framebuffer destFb = MinecraftClient.getInstance().getFramebuffer();
-        if (destFb == null || destFb.getColorAttachment() == null) return;
-        int destTexId = stereoscopic$extractGlId(destFb.getColorAttachment());
+        RenderTarget destFb = Minecraft.getInstance().getMainRenderTarget();
+        if (destFb == null || destFb.getColorTexture() == null) return;
+        int destTexId = stereoscopic$extractGlId(destFb.getColorTexture());
         if (destTexId == 0 || stereoscopic$scratchFbo == 0) return;
 
         boolean outerScratchActive = PerEyeRenderer.isScratchFbActive();
@@ -149,8 +149,8 @@ public abstract class MixinFinalPassRenderer {
         if (outerScratchActive) {
             dstX0 = 0;
             dstY0 = 0;
-            dstX1 = destFb.textureWidth;
-            dstY1 = destFb.textureHeight;
+            dstX1 = destFb.width;
+            dstY1 = destFb.height;
         } else {
             dstX0 = s.getEyeVpX();
             dstY0 = s.getEyeVpY();

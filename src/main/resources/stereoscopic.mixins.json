@@ -2,7 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.mitchellmarx.stereoscopic.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "client": [
     "minecraft.MixinFramebuffer",
     "minecraft.MixinGameRenderer",
@@ -10,7 +10,7 @@
     "minecraft.MixinGuiRenderer",
     "minecraft.MixinGuiRendererScissor",
     "minecraft.MixinWorldRenderer",
-    "minecraft.MixinRenderSystem",
+    "minecraft.MixinGlDevice",
     "minecraft.MixinGlStateManager",
     "minecraft.MixinMouse",
     "minecraft.MouseAccessor",

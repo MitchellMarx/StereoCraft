@@ -3,7 +3,7 @@ package com.mitchellmarx.stereoscopic.compat.iris;
 import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 /**
  * Optional-dependency facade around Iris's pipeline lifecycle and per-eye
@@ -36,11 +36,11 @@ public final class PerEyeRenderTargetHooks {
      */
     public static void rebuildPipelineForStereoToggle() {
         if (!IRIS_PRESENT) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.world == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return;
         try {
             irisReloadPipeline();
-            if (mc.worldRenderer != null) mc.worldRenderer.reload();
+            if (mc.levelRenderer != null) mc.levelRenderer.allChanged();
         } catch (Throwable t) {
             Stereoscopic.LOG.error("Iris pipeline rebuild on stereo toggle failed", t);
         }

@@ -2,7 +2,7 @@ package com.mitchellmarx.stereoscopic.cursor;
 
 import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mitchellmarx.stereoscopic.core.StereoState;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWNativeWin32;
 
@@ -62,9 +62,9 @@ public final class StereoCursor {
             return;
         }
 
-        MinecraftClient mc = MinecraftClient.getInstance();
-        boolean screenOpen = mc != null && mc.currentScreen != null;
-        boolean gameplayFocus = mc != null && mc.mouse != null && mc.mouse.isCursorLocked();
+        Minecraft mc = Minecraft.getInstance();
+        boolean screenOpen = mc != null && mc.screen != null;
+        boolean gameplayFocus = mc != null && mc.mouseHandler != null && mc.mouseHandler.isMouseGrabbed();
 
         // Overlay only when stereo + screen open. In gameplay, vanilla
         // CURSOR_DISABLED hides the cursor and there's no virtual cursor.
@@ -83,10 +83,10 @@ public final class StereoCursor {
         }
     }
 
-    private static void hideOsCursor(MinecraftClient mc) {
+    private static void hideOsCursor(Minecraft mc) {
         if (weAreHidingCursor) return;
         if (mc == null || mc.getWindow() == null) return;
-        long handle = mc.getWindow().getHandle();
+        long handle = mc.getWindow().handle();
         if (handle == 0L) return;
         try {
             GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
@@ -98,12 +98,12 @@ public final class StereoCursor {
 
     private static void restoreOsCursorIfHidden() {
         if (!weAreHidingCursor) return;
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) {
             weAreHidingCursor = false;
             return;
         }
-        long handle = mc.getWindow().getHandle();
+        long handle = mc.getWindow().handle();
         if (handle == 0L) {
             weAreHidingCursor = false;
             return;
@@ -114,7 +114,7 @@ public final class StereoCursor {
         // MC's own setScreen(null) → mouse.lockCursor() ran during input
         // processing before our tick, so the mode we restore to matches.
         // Hard-coding NORMAL would clobber MC's correct DISABLED setting.
-        int mode = (mc.currentScreen == null)
+        int mode = (mc.screen == null)
             ? GLFW.GLFW_CURSOR_DISABLED
             : GLFW.GLFW_CURSOR_NORMAL;
         try {

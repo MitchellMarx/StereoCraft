@@ -1,6 +1,6 @@
 package com.mitchellmarx.stereoscopic.core;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 public final class StereoState {
 
@@ -29,7 +29,7 @@ public final class StereoState {
      * shadow render, Sodium chunk setup) restore this for their duration.
      * Null when not inside the per-eye world wrap.
      */
-    private Vec3d frameMonoCameraPos;
+    private Vec3 frameMonoCameraPos;
 
     private StereoState() {}
 
@@ -83,8 +83,8 @@ public final class StereoState {
     public int getEyeVpW() { return eyeVpW; }
     public int getEyeVpH() { return eyeVpH; }
 
-    public Vec3d getFrameMonoCameraPos() { return frameMonoCameraPos; }
-    public void setFrameMonoCameraPos(Vec3d pos) { this.frameMonoCameraPos = pos; }
+    public Vec3 getFrameMonoCameraPos() { return frameMonoCameraPos; }
+    public void setFrameMonoCameraPos(Vec3 pos) { this.frameMonoCameraPos = pos; }
 
     /**
      * -ipd/2 LEFT, +ipd/2 RIGHT, 0 MONO — vanilla 1.21 convention. LEFT eye's

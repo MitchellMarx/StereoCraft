@@ -30,7 +30,7 @@ import org.spongepowered.asm.mixin.injection.At;
 public abstract class MixinGuiRendererScissor {
 
     @WrapOperation(
-        method = "enableScissor(Lnet/minecraft/client/gui/ScreenRect;Lcom/mojang/blaze3d/systems/RenderPass;)V",
+        method = "enableScissor(Lnet/minecraft/client/gui/navigation/ScreenRectangle;Lcom/mojang/blaze3d/systems/RenderPass;)V",
         at = @At(value = "INVOKE",
                  target = "Lcom/mojang/blaze3d/systems/RenderPass;enableScissor(IIII)V")
     )

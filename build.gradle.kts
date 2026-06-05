@@ -1,5 +1,8 @@
 plugins {
-    id("fabric-loom") version "1.16.2"
+    // MC 26.1 is unobfuscated: use the non-remapping Loom line (1.16-SNAPSHOT),
+    // matching FabricMC/fabric-example-mod @ 26.1.2. The old fabric-loom /
+    // 1.17.0-alpha line still expects (now non-existent) Mojang mappings.
+    id("net.fabricmc.fabric-loom") version "1.16-SNAPSHOT"
     `java-library`
     `maven-publish`
 }
@@ -9,8 +12,8 @@ group = project.property("maven_group") as String
 base.archivesName.set(project.property("archives_base_name") as String)
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
     withSourcesJar()
 }
 
@@ -20,27 +23,31 @@ repositories {
 }
 
 dependencies {
+    // No mappings() and no remapping: MC 26.1 ships unobfuscated with parameter
+    // names, so mod deps are plain implementation/compileOnly/runtimeOnly.
     minecraft("com.mojang:minecraft:${project.property("minecraft_version")}")
-    mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
-    modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
 
-    modImplementation("maven.modrinth:sodium:${project.property("sodium_version")}")
-    modCompileOnly("maven.modrinth:iris:${project.property("iris_version")}")
-    modRuntimeOnly("maven.modrinth:iris:${project.property("iris_version")}")
+    implementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
+    implementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
 
-    modCompileOnly("maven.modrinth:voxy:${project.property("voxy_version")}")
+    implementation("maven.modrinth:sodium:${project.property("sodium_version")}")
+    compileOnly("maven.modrinth:iris:${project.property("iris_version")}")
+    runtimeOnly("maven.modrinth:iris:${project.property("iris_version")}")
 
-    modImplementation("io.github.llamalad7:mixinextras-fabric:0.5.4")
+    compileOnly("maven.modrinth:voxy:${project.property("voxy_version")}")
+
+    // MixinExtras is bundled inside Fabric Loader 0.19 at runtime; compileOnly
+    // for the annotations (@WrapOperation, @ModifyReturnValue, ...).
+    compileOnly("io.github.llamalad7:mixinextras-fabric:0.5.4")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 loom {
-    runs {
-        named("client") {
-            programArgs("--username", "Dev")
+    mods {
+        register("stereoscopic") {
+            sourceSet(sourceSets.main.get())
         }
     }
 }
@@ -61,27 +68,28 @@ tasks.processResources {
 
 tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
-    options.release.set(21)
+    options.release.set(25)
 }
 
 tasks.test { useJUnitPlatform() }
 
 // --- Deploy hook ---
+// No remapJar in the unobfuscated build: the plain `jar` is the final mod jar.
 val testInstanceMods = file(
     (project.findProperty("stereoscopic.deployDir") as String?)
-        ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fall 2025 Let_s Play/mods"
+        ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.1.2/mods"
 )
 
 val copyToTestInstance by tasks.registering(Copy::class) {
     group = "stereoscopic"
-    description = "Deploys remapped jar into the Modrinth test instance"
-    dependsOn(tasks.remapJar)
+    description = "Deploys the built jar into the Modrinth test instance"
+    dependsOn(tasks.jar)
     onlyIf {
         val ok = testInstanceMods.isDirectory
         if (!ok) logger.lifecycle("Skipping copyToTestInstance: $testInstanceMods not found")
         ok
     }
-    from(tasks.remapJar.flatMap { it.archiveFile })
+    from(tasks.jar.flatMap { it.archiveFile })
     into(testInstanceMods)
     doFirst {
         testInstanceMods.listFiles { _, name ->

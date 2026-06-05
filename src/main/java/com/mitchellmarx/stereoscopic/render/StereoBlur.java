@@ -2,17 +2,17 @@ package com.mitchellmarx.stereoscopic.render;
 
 import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mitchellmarx.stereoscopic.core.StereoState;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTexture;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.gl.PostEffectProcessor;
-import net.minecraft.client.gl.ShaderLoader;
-import net.minecraft.client.gl.SimpleFramebuffer;
-import net.minecraft.client.render.DefaultFramebufferSet;
-import net.minecraft.client.util.ObjectAllocator;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelTargetBundle;
+import net.minecraft.client.renderer.PostChain;
+import net.minecraft.client.renderer.ShaderManager;
+import net.minecraft.resources.Identifier;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -30,9 +30,9 @@ import org.lwjgl.opengl.GL30;
  */
 public final class StereoBlur {
 
-    private static final Identifier BLUR_ID = Identifier.ofVanilla("blur");
+    private static final Identifier BLUR_ID = Identifier.withDefaultNamespace("blur");
 
-    private static SimpleFramebuffer blurFB;
+    private static TextureTarget blurFB;
     private static int currentW = -1;
     private static int currentH = -1;
 
@@ -46,23 +46,23 @@ public final class StereoBlur {
         int eyeH = s.getEyeVpH();
         if (eyeW <= 0 || eyeH <= 0) return;
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        Framebuffer mainFB = client.getFramebuffer();
+        Minecraft client = Minecraft.getInstance();
+        RenderTarget mainFB = client.getMainRenderTarget();
         if (mainFB == null) return;
 
         if (eyeX < 0 || eyeY < 0
-            || eyeX + eyeW > mainFB.textureWidth
-            || eyeY + eyeH > mainFB.textureHeight) return;
+            || eyeX + eyeW > mainFB.width
+            || eyeY + eyeH > mainFB.height) return;
 
         if (!ensureBlurFB(eyeW, eyeH)) return;
 
-        ShaderLoader shaderLoader = client.getShaderLoader();
-        PostEffectProcessor blur = shaderLoader.loadPostEffect(BLUR_ID, DefaultFramebufferSet.MAIN_ONLY);
+        ShaderManager shaderManager = client.getShaderManager();
+        PostChain blur = shaderManager.getPostChain(BLUR_ID, LevelTargetBundle.MAIN_TARGETS);
         if (blur == null) return;
 
         CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
-        GpuTexture mainColor = mainFB.getColorAttachment();
-        GpuTexture blurColor = blurFB.getColorAttachment();
+        GpuTexture mainColor = mainFB.getColorTexture();
+        GpuTexture blurColor = blurFB.getColorTexture();
 
         // copyTextureToTexture(src, dst, mipLevel, dstX, dstY, srcX, srcY, w, h).
         // Vanilla GlCommandEncoder.copyTextureToTexture has a bug where it
@@ -76,7 +76,7 @@ public final class StereoBlur {
         int prevDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         int prevRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
         try {
-            blur.render(blurFB, ObjectAllocator.TRIVIAL);
+            blur.process(blurFB, GraphicsResourceAllocator.UNPOOLED);
         } finally {
             GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
             GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevRead);
@@ -87,20 +87,20 @@ public final class StereoBlur {
 
     private static boolean ensureBlurFB(int w, int h) {
         if (currentW == w && currentH == h && blurFB != null) return true;
-        if (blurFB != null) { blurFB.delete(); blurFB = null; }
-        SimpleFramebuffer fb = new SimpleFramebuffer("stereoscopic-blur", w, h, true);
-        // 1.21.11 Framebuffer has no checkFramebufferStatus(); the closest
+        if (blurFB != null) { blurFB.destroyBuffers(); blurFB = null; }
+        TextureTarget fb = new TextureTarget("stereoscopic-blur", w, h, true);
+        // RenderTarget has no checkFramebufferStatus(); the closest
         // post-construction sanity check is verifying the GpuTexture attachments
         // were created. createTexture throws on allocation failure, so this
         // mostly guards against a future refactor returning null silently.
         try {
-            if (fb.getColorAttachment() == null || fb.getDepthAttachment() == null) {
+            if (fb.getColorTexture() == null || fb.getDepthTexture() == null) {
                 throw new IllegalStateException("blur FB missing attachments");
             }
         } catch (Throwable t) {
             Stereoscopic.LOG.warn(
                 "[stereo-blur] blur FB completeness check failed at {}x{}; skipping per-eye blur", w, h, t);
-            try { fb.delete(); } catch (Throwable ignore) {}
+            try { fb.destroyBuffers(); } catch (Throwable ignore) {}
             currentW = -1;
             currentH = -1;
             return false;
@@ -112,7 +112,7 @@ public final class StereoBlur {
     }
 
     public static void dispose() {
-        if (blurFB != null) { blurFB.delete(); blurFB = null; }
+        if (blurFB != null) { blurFB.destroyBuffers(); blurFB = null; }
         currentW = -1;
         currentH = -1;
     }

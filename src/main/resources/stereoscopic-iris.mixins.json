@@ -2,7 +2,7 @@
   "required": false,
   "minVersion": "0.8",
   "package": "com.mitchellmarx.stereoscopic.mixin.iris",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "client": [
     "MixinGlFramebuffer",
     "MixinRenderTargets",

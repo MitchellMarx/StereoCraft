@@ -9,8 +9,8 @@ import net.caffeinemc.mods.sodium.api.config.StorageEventHandler;
 import net.caffeinemc.mods.sodium.api.config.option.OptionFlag;
 import net.caffeinemc.mods.sodium.api.config.option.OptionImpact;
 import net.caffeinemc.mods.sodium.api.config.structure.ConfigBuilder;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 /**
  * Sodium options-page integration via the public Sodium Config API. Registered
@@ -22,10 +22,10 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
 
     private static final String MODID = Stereoscopic.MOD_ID;
 
-    private static final Identifier ID_MODE        = Identifier.of(MODID, "mode");
-    private static final Identifier ID_IPD         = Identifier.of(MODID, "ipd");
-    private static final Identifier ID_CONVERGENCE = Identifier.of(MODID, "convergence");
-    private static final Identifier ID_SWAP_EYES   = Identifier.of(MODID, "swap_eyes");
+    private static final Identifier ID_MODE        = Identifier.fromNamespaceAndPath(MODID, "mode");
+    private static final Identifier ID_IPD         = Identifier.fromNamespaceAndPath(MODID, "ipd");
+    private static final Identifier ID_CONVERGENCE = Identifier.fromNamespaceAndPath(MODID, "convergence");
+    private static final Identifier ID_SWAP_EYES   = Identifier.fromNamespaceAndPath(MODID, "swap_eyes");
 
     private final StorageEventHandler storageFlush = () -> {
         try { StereoOptions.INSTANCE.save(); }
@@ -35,13 +35,13 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
     @Override
     public void registerConfigLate(ConfigBuilder builder) {
         builder.registerOwnModOptions()
-            .setIcon(Identifier.of(MODID, "icon.png"))
+            .setIcon(Identifier.fromNamespaceAndPath(MODID, "icon.png"))
             .addPage(builder.createOptionPage()
-                .setName(Text.translatable("stereoscopic.options.group.name"))
+                .setName(Component.translatable("stereoscopic.options.group.name"))
                 .addOptionGroup(builder.createOptionGroup()
                     .addOption(builder.createEnumOption(ID_MODE, StereoMode.class)
-                        .setName(Text.translatable("stereoscopic.options.mode.name"))
-                        .setTooltip(Text.translatable("stereoscopic.options.mode.tooltip"))
+                        .setName(Component.translatable("stereoscopic.options.mode.name"))
+                        .setTooltip(Component.translatable("stereoscopic.options.mode.tooltip"))
                         .setElementNameProvider(StereoOptionsPage::modeName)
                         .setDefaultValue(StereoMode.OFF)
                         .setBinding(StereoOptionsPage::applyModeChange,
@@ -50,29 +50,29 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .setStorageHandler(storageFlush))
                     .addOption(builder.createIntegerOption(ID_IPD)
-                        .setName(Text.translatable("stereoscopic.options.ipd.name"))
-                        .setTooltip(Text.translatable("stereoscopic.options.ipd.tooltip"))
+                        .setName(Component.translatable("stereoscopic.options.ipd.name"))
+                        .setTooltip(Component.translatable("stereoscopic.options.ipd.tooltip"))
                         .setRange(55, 75, 1)
-                        .setValueFormatter(mm -> Text.literal(String.format("%.3f m", mm / 1000.0)))
+                        .setValueFormatter(mm -> Component.literal(String.format("%.3f m", mm / 1000.0)))
                         .setDefaultValue(64) // 0.064 m
                         .setBinding(mm -> StereoOptions.INSTANCE.ipd = clampedMetersFromMm(mm),
                                     () -> Math.round(StereoOptions.INSTANCE.ipd * 1000f))
                         .setStorageHandler(storageFlush))
                     .addOption(builder.createIntegerOption(ID_CONVERGENCE)
-                        .setName(Text.translatable("stereoscopic.options.convergence.name"))
-                        .setTooltip(Text.translatable("stereoscopic.options.convergence.tooltip"))
+                        .setName(Component.translatable("stereoscopic.options.convergence.name"))
+                        .setTooltip(Component.translatable("stereoscopic.options.convergence.tooltip"))
                         .setRange(0, 16, 1)
                         .setValueFormatter(b -> b == 0
-                            ? Text.translatable("stereoscopic.options.convergence.off")
-                            : Text.translatable("stereoscopic.options.convergence.blocks", b))
+                            ? Component.translatable("stereoscopic.options.convergence.off")
+                            : Component.translatable("stereoscopic.options.convergence.blocks", b))
                         .setDefaultValue(4)
                         .setBinding(b -> StereoOptions.INSTANCE.convergence = clampedConvergence(b),
                                     () -> Math.round(StereoOptions.INSTANCE.convergence))
                         .setImpact(OptionImpact.LOW)
                         .setStorageHandler(storageFlush))
                     .addOption(builder.createBooleanOption(ID_SWAP_EYES)
-                        .setName(Text.translatable("stereoscopic.options.swap_eyes.name"))
-                        .setTooltip(Text.translatable("stereoscopic.options.swap_eyes.tooltip"))
+                        .setName(Component.translatable("stereoscopic.options.swap_eyes.name"))
+                        .setTooltip(Component.translatable("stereoscopic.options.swap_eyes.tooltip"))
                         .setDefaultValue(false)
                         .setBinding(v -> StereoOptions.INSTANCE.swapEyes = v,
                                     () -> StereoOptions.INSTANCE.swapEyes)
@@ -104,10 +104,10 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
         return Math.max(0, Math.min(16, blocks));
     }
 
-    private static Text modeName(StereoMode m) {
+    private static Component modeName(StereoMode m) {
         return switch (m) {
-            case OFF      -> Text.translatable("stereoscopic.options.mode.off");
-            case SBS_HALF -> Text.translatable("stereoscopic.options.mode.sbs_half");
+            case OFF      -> Component.translatable("stereoscopic.options.mode.off");
+            case SBS_HALF -> Component.translatable("stereoscopic.options.mode.sbs_half");
         };
     }
 }

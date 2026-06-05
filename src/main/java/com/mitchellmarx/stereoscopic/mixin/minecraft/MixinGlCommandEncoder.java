@@ -3,8 +3,7 @@ package com.mitchellmarx.stereoscopic.mixin.minecraft;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
-import net.minecraft.client.gl.BufferManager;
-import net.minecraft.client.gl.GlCommandEncoder;
+import com.mojang.blaze3d.opengl.DirectStateAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -26,16 +25,17 @@ import org.spongepowered.asm.mixin.injection.At;
  * with {@code dstX = halfW, w = halfW} gave {@code dstX0 = halfW, dstX1 = halfW},
  * zero-width rect, no pixels written.
  */
-@Mixin(GlCommandEncoder.class)
+// GlCommandEncoder is package-private in com.mojang.blaze3d.opengl — target by name.
+@Mixin(targets = "com.mojang.blaze3d.opengl.GlCommandEncoder")
 public abstract class MixinGlCommandEncoder {
 
     @WrapOperation(
         method = "copyTextureToTexture(Lcom/mojang/blaze3d/textures/GpuTexture;Lcom/mojang/blaze3d/textures/GpuTexture;IIIIIII)V",
         at = @At(value = "INVOKE",
-                 target = "Lnet/minecraft/client/gl/BufferManager;setupBlitFramebuffer(IIIIIIIIIIII)V")
+                 target = "Lcom/mojang/blaze3d/opengl/DirectStateAccess;blitFrameBuffers(IIIIIIIIIIII)V")
     )
     private void stereoscopic$fixBlitEndpoints(
-            BufferManager bm,
+            DirectStateAccess bm,
             int fb1, int fb2,
             int srcX0, int srcY0, int bogusSrcX1, int bogusSrcY1,
             int dstX0, int dstY0, int bogusDstX1, int bogusDstY1,

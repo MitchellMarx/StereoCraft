@@ -1,7 +1,7 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
 import com.mitchellmarx.stereoscopic.cursor.CursorPresentThread;
-import net.minecraft.client.gl.Framebuffer;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * <p>No-op when {@link CursorPresentThread#isRunning()} is false (mono, non-
  * Windows, setup failure).
  */
-@Mixin(Framebuffer.class)
+@Mixin(RenderTarget.class)
 public abstract class MixinFramebuffer {
 
     @Inject(method = "blitToScreen()V", at = @At("HEAD"), cancellable = true)

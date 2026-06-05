@@ -2,7 +2,7 @@ package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import com.mitchellmarx.stereoscopic.core.StereoState;
-import net.minecraft.client.Mouse;
+import net.minecraft.client.MouseHandler;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
@@ -17,13 +17,13 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
  * <p>{@code @ModifyArg} after sensitivity scaling + {@code invertMouseX}
  * negation, so a simple 0.5 multiply preserves sign.
  */
-@Mixin(Mouse.class)
+@Mixin(MouseHandler.class)
 public abstract class MixinMouse {
 
     @ModifyArg(
-        method = "updateMouse(D)V",
+        method = "turnPlayer(D)V",
         at = @At(value = "INVOKE",
-                 target = "Lnet/minecraft/client/network/ClientPlayerEntity;changeLookDirection(DD)V"),
+                 target = "Lnet/minecraft/client/player/LocalPlayer;turn(DD)V"),
         index = 0
     )
     private double stereoscopic$halveDxForSbsHalf(double dx) {

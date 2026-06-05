@@ -4,11 +4,11 @@ import com.mitchellmarx.stereoscopic.core.StereoOptions;
 import com.mitchellmarx.stereoscopic.cursor.StereoCursor;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
 import com.mitchellmarx.stereoscopic.render.StereoBlur;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.Mouse;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.util.Window;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.Window;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
+import net.minecraft.client.gui.screens.Screen;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -17,10 +17,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(MinecraftClient.class)
+@Mixin(Minecraft.class)
 public abstract class MixinMinecraftClient {
 
-    @Shadow @Final public Mouse mouse;
+    @Shadow @Final public MouseHandler mouseHandler;
     @Shadow @Final private Window window;
 
     /**
@@ -29,13 +29,13 @@ public abstract class MixinMinecraftClient {
      * between eyes. {@code (width/4, height/2)} puts it at left-half center;
      * the per-eye HUD compression renders it cleanly in both eye views.
      */
-    @Inject(method = "setScreen(Lnet/minecraft/client/gui/screen/Screen;)V", at = @At("RETURN"))
+    @Inject(method = "setScreen(Lnet/minecraft/client/gui/screens/Screen;)V", at = @At("RETURN"))
     private void stereoscopic$seedVirtualCursor(Screen screen, CallbackInfo ci) {
         if (screen == null) return;
         if (!StereoOptions.INSTANCE.mode.isActive()) return;
-        MouseAccessor accessor = (MouseAccessor) (Object) this.mouse;
-        accessor.stereoscopic$setX(window.getWidth() / 4.0);
-        accessor.stereoscopic$setY(window.getHeight() / 2.0);
+        MouseAccessor accessor = (MouseAccessor) (Object) this.mouseHandler;
+        accessor.stereoscopic$setX(window.getScreenWidth() / 4.0);
+        accessor.stereoscopic$setY(window.getScreenHeight() / 2.0);
     }
 
     /**
@@ -43,10 +43,10 @@ public abstract class MixinMinecraftClient {
      * lambda-synthetics inside {@code WorldRenderer.render}'s framegraph
      * passes that a method-scoped {@code @Redirect} would miss.
      */
-    @Inject(method = "getFramebuffer()Lnet/minecraft/client/gl/Framebuffer;", at = @At("HEAD"), cancellable = true)
-    private void stereoscopic$redirectToScratch(CallbackInfoReturnable<Framebuffer> cir) {
+    @Inject(method = "getMainRenderTarget()Lcom/mojang/blaze3d/pipeline/RenderTarget;", at = @At("HEAD"), cancellable = true)
+    private void stereoscopic$redirectToScratch(CallbackInfoReturnable<RenderTarget> cir) {
         if (!PerEyeRenderer.isScratchFbActive()) return;
-        Framebuffer scratch = PerEyeRenderer.getScratchFb();
+        RenderTarget scratch = PerEyeRenderer.getScratchFb();
         if (scratch == null) return;
         cir.setReturnValue(scratch);
     }

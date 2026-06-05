@@ -4,9 +4,9 @@ import com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.mixin.minecraft.CameraAccessor;
 import net.irisshaders.iris.shadows.ShadowRenderer;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.Camera;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -28,7 +28,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = ShadowRenderer.class, remap = false)
 public abstract class MixinShadowRenderer {
 
-    @Unique private static Vec3d stereoscopic$savedEyePos;
+    @Unique private static Vec3 stereoscopic$savedEyePos;
 
     @Inject(method = "renderShadows", at = @At("HEAD"), cancellable = true)
     private void stereoscopic$skipShadowsOnRightEye(CallbackInfo ci) {
@@ -38,17 +38,17 @@ public abstract class MixinShadowRenderer {
             return;
         }
         if (!StereoState.INSTANCE.isActive()) return;
-        Vec3d monoPos = StereoState.INSTANCE.getFrameMonoCameraPos();
+        Vec3 monoPos = StereoState.INSTANCE.getFrameMonoCameraPos();
         if (monoPos == null) return;
-        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
-        stereoscopic$savedEyePos = camera.getCameraPos();
+        Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        stereoscopic$savedEyePos = camera.position();
         ((CameraAccessor)(Object)camera).stereoscopic$setPos(monoPos);
     }
 
     @Inject(method = "renderShadows", at = @At("RETURN"))
     private void stereoscopic$restoreEyePosAfterShadows(CallbackInfo ci) {
         if (stereoscopic$savedEyePos == null) return;
-        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
+        Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
         ((CameraAccessor)(Object)camera).stereoscopic$setPos(stereoscopic$savedEyePos);
         stereoscopic$savedEyePos = null;
     }

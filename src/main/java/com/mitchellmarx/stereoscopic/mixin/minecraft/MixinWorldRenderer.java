@@ -1,9 +1,12 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.render.WorldRenderer;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -28,13 +31,37 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * resource-load ordering having fired before the first stereo frame — a
  * pre-flip stereo enable would race it.
  */
-@Mixin(WorldRenderer.class)
+@Mixin(LevelRenderer.class)
 public abstract class MixinWorldRenderer {
 
-    @Inject(method = "getCloudsFramebuffer()Lnet/minecraft/client/gl/Framebuffer;", at = @At("HEAD"), cancellable = true)
-    private void stereoscopic$forceMainFbForClouds(CallbackInfoReturnable<Framebuffer> cir) {
+    @Inject(method = "getCloudsTarget()Lcom/mojang/blaze3d/pipeline/RenderTarget;", at = @At("HEAD"), cancellable = true)
+    private void stereoscopic$forceMainFbForClouds(CallbackInfoReturnable<RenderTarget> cir) {
         if (!StereoState.INSTANCE.isActive()) return;
         if (!PerEyeRenderer.isScratchFbActive()) return;
         cir.setReturnValue(null);
+    }
+
+    /**
+     * Defer the per-frame {@code LevelRenderState.reset()} past the LEFT eye.
+     *
+     * <p>MC 26.x extracts entities + block entities once per frame into
+     * {@code LevelRenderState.entityRenderStates} / {@code blockEntityRenderStates},
+     * and {@code renderLevel} {@code .clear()}s those lists at its end (via
+     * {@code reset()}). Our two-pass calls {@code renderLevel} once per eye, so
+     * the LEFT pass would drain the lists and the RIGHT eye would render no
+     * chests/signs/item frames/paintings (terrain survives — it's Sodium's
+     * persistent section data). Skip the reset on the LEFT eye so the RIGHT eye
+     * still sees the extracted render states; let it run normally on RIGHT/MONO
+     * so per-frame cleanup still happens exactly once.
+     */
+    @WrapOperation(
+        method = "renderLevel",
+        at = @At(value = "INVOKE",
+                 target = "Lnet/minecraft/client/renderer/state/level/LevelRenderState;reset()V")
+    )
+    private void stereoscopic$deferResetUntilLastEye(LevelRenderState state, Operation<Void> original) {
+        StereoState s = StereoState.INSTANCE;
+        if (s.isActive() && s.getCurrentEye() == StereoState.Eye.LEFT) return;
+        original.call(state);
     }
 }

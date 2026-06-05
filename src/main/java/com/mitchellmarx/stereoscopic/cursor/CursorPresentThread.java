@@ -1,10 +1,10 @@
 package com.mitchellmarx.stereoscopic.cursor;
 
 import com.mitchellmarx.stereoscopic.Stereoscopic;
+import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.textures.GpuTexture;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.texture.GlTexture;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWNativeWGL;
 import org.lwjgl.glfw.GLFWNativeWin32;
@@ -26,6 +26,7 @@ import org.lwjgl.system.windows.User32;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -238,7 +239,7 @@ public final class CursorPresentThread {
                                   major, minor, hasCore ? "GL4.3" : "ARB_copy_image");
         } catch (Throwable t) {
             Stereoscopic.LOG.error("Failed to set up async cursor context; feature disabled.", t);
-            try { if (cursorHglrc != 0L) WGL.wglDeleteContext(cursorHglrc); }
+            try { if (cursorHglrc != 0L) WGL.wglDeleteContext((IntBuffer) null, cursorHglrc); }
             catch (Throwable cleanupT) { Stereoscopic.LOG.warn("wglDeleteContext during start() cleanup failed; HGLRC leaked", cleanupT); }
             try { if (mainHdc != 0L && mainHwnd != 0L) User32.ReleaseDC(mainHwnd, mainHdc); }
             catch (Throwable cleanupT) { Stereoscopic.LOG.warn("ReleaseDC during start() cleanup failed; HDC leaked", cleanupT); }
@@ -253,7 +254,7 @@ public final class CursorPresentThread {
         try { it.worker.join(500); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
-        try { WGL.wglDeleteContext(it.cursorHglrc); }
+        try { WGL.wglDeleteContext((IntBuffer) null, it.cursorHglrc); }
         catch (Throwable t) { Stereoscopic.LOG.warn("wglDeleteContext failed on stop", t); }
         try { User32.ReleaseDC(it.mainHwnd, it.mainHdc); }
         catch (Throwable t) { Stereoscopic.LOG.warn("User32.ReleaseDC failed on stop", t); }
@@ -281,7 +282,7 @@ public final class CursorPresentThread {
 
     private void runLoop() {
         // wglMakeCurrent is thread-local — main keeps its own context.
-        if (!WGL.wglMakeCurrent(mainHdc, cursorHglrc)) {
+        if (!WGL.wglMakeCurrent((IntBuffer) null, mainHdc, cursorHglrc)) {
             Stereoscopic.LOG.error("Cursor thread: wglMakeCurrent failed; exiting.");
             return;
         }
@@ -312,7 +313,7 @@ public final class CursorPresentThread {
                 }
             }
         } finally {
-            try { WGL.wglMakeCurrent(0L, 0L); }
+            try { WGL.wglMakeCurrent((IntBuffer) null, 0L, 0L); }
             catch (Throwable t) { Stereoscopic.LOG.warn("wglMakeCurrent(0,0) failed on cursor-thread exit", t); }
         }
     }
@@ -335,16 +336,16 @@ public final class CursorPresentThread {
                 it.previousFrameFence = 0L;
             }
 
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             if (mc == null) return;
-            Framebuffer fb = mc.getFramebuffer();
+            RenderTarget fb = mc.getMainRenderTarget();
             if (fb == null) return;
-            GpuTexture color = fb.getColorAttachment();
+            GpuTexture color = fb.getColorTexture();
             if (!(color instanceof GlTexture glColor)) return;
-            int srcTex = glColor.getGlId();
+            int srcTex = glColor.glId();
             if (srcTex <= 0) return;
-            int w = fb.textureWidth;
-            int h = fb.textureHeight;
+            int w = fb.width;
+            int h = fb.height;
             if (w <= 0 || h <= 0) return;
 
             boolean justAllocated;
@@ -605,7 +606,7 @@ public final class CursorPresentThread {
             drawStereoCursors(w, h);
         }
 
-        try { GDI32.SwapBuffers(mainHdc); }
+        try { GDI32.SwapBuffers((IntBuffer) null, mainHdc); }
         catch (Throwable t) { Stereoscopic.LOG.warn("GDI32.SwapBuffers failed", t); }
     }
 

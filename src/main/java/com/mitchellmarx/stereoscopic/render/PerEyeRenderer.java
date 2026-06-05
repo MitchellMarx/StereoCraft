@@ -3,13 +3,18 @@ package com.mitchellmarx.stereoscopic.render;
 import com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks;
 import com.mitchellmarx.stereoscopic.core.StereoOptions;
 import com.mitchellmarx.stereoscopic.core.StereoState;
-// GlStateManager._viewport directly, not RenderSystem.viewport — 1.21.11 has
-// no RenderSystem.viewport(IIII) wrapper. Yarn 1.21.11 also moves
-// GlStateManager from com.mojang.blaze3d.platform to com.mojang.blaze3d.opengl.
+// GlStateManager._viewport directly, not RenderSystem.viewport — there is
+// no RenderSystem.viewport(IIII) wrapper. GlStateManager lives in
+// com.mojang.blaze3d.opengl.
 import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.gl.SimpleFramebuffer;
+import com.mojang.blaze3d.textures.GpuTexture;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 public final class PerEyeRenderer {
 
@@ -18,24 +23,24 @@ public final class PerEyeRenderer {
     public static boolean isBypassActive() { return bypass; }
 
     private static boolean scratchFbActive;
-    private static SimpleFramebuffer scratchFb;
+    private static TextureTarget scratchFb;
     private static int scratchFbW = -1;
     private static int scratchFbH = -1;
 
     public static boolean isScratchFbActive() { return scratchFbActive; }
     public static void setScratchFbActive(boolean active) { scratchFbActive = active; }
-    public static SimpleFramebuffer getScratchFb() { return scratchFb; }
+    public static TextureTarget getScratchFb() { return scratchFb; }
     public static int getScratchFbW() { return scratchFbW; }
     public static int getScratchFbH() { return scratchFbH; }
 
-    public static SimpleFramebuffer ensureScratchFb(int w, int h) {
+    public static TextureTarget ensureScratchFb(int w, int h) {
         if (scratchFb != null && scratchFbW == w && scratchFbH == h) return scratchFb;
         if (scratchFb != null) {
-            try { scratchFb.delete(); }
+            try { scratchFb.destroyBuffers(); }
             catch (Throwable t) { Stereoscopic.LOG.warn("Scratch FB delete failed during resize; GPU FB leaked", t); }
             scratchFb = null;
         }
-        scratchFb = new SimpleFramebuffer("stereoscopic-world-scratch", w, h, true);
+        scratchFb = new TextureTarget("stereoscopic-world-scratch", w, h, true);
         scratchFbW = w;
         scratchFbH = h;
         return scratchFb;
@@ -43,12 +48,61 @@ public final class PerEyeRenderer {
 
     public static void disposeScratch() {
         if (scratchFb != null) {
-            try { scratchFb.delete(); }
+            try { scratchFb.destroyBuffers(); }
             catch (Throwable t) { Stereoscopic.LOG.warn("Scratch FB delete failed on shutdown; GPU FB leaked", t); }
             scratchFb = null;
         }
         scratchFbW = -1;
         scratchFbH = -1;
+    }
+
+    /**
+     * Blit the full scratch FB color into an arbitrary dest rect on {@code mainFb},
+     * scaling with {@code GL_LINEAR}. Used by the menu panorama: render the cube
+     * map once (mono, full) into scratch, then squish the full image into each
+     * eye-half. Decouples per-eye SBS from the projection so it survives 26.x's
+     * single shared projection UBO.
+     */
+    public static void blitScratchColorToRect(TextureTarget scratch, RenderTarget mainFb,
+                                              int dstX0, int dstY0, int dstX1, int dstY1) {
+        if (scratch == null || scratch.getColorTexture() == null) return;
+        if (mainFb == null || mainFb.getColorTexture() == null) return;
+        int srcTex = stereoscopic$glId(scratch.getColorTexture());
+        int dstTex = stereoscopic$glId(mainFb.getColorTexture());
+        if (srcTex == 0 || dstTex == 0) return;
+        int srcW = scratch.width;
+        int srcH = scratch.height;
+
+        int prevDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        int prevRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+        boolean wasScissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        if (wasScissor) GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        int readFbo = GL30.glGenFramebuffers();
+        int drawFbo = GL30.glGenFramebuffers();
+        try {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readFbo);
+            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, srcTex, 0);
+            GL11.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, drawFbo);
+            GL30.glFramebufferTexture2D(GL30.GL_DRAW_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, dstTex, 0);
+            GL11.glDrawBuffer(GL30.GL_COLOR_ATTACHMENT0);
+            if (GL30.glCheckFramebufferStatus(GL30.GL_READ_FRAMEBUFFER) == GL30.GL_FRAMEBUFFER_COMPLETE
+             && GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER) == GL30.GL_FRAMEBUFFER_COMPLETE) {
+                GL30.glBlitFramebuffer(0, 0, srcW, srcH, dstX0, dstY0, dstX1, dstY1,
+                    GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
+            }
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevRead);
+            GL30.glDeleteFramebuffers(readFbo);
+            GL30.glDeleteFramebuffers(drawFbo);
+            if (wasScissor) GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        }
+    }
+
+    private static int stereoscopic$glId(GpuTexture tex) {
+        if (tex instanceof GlTexture gl) return gl.glId();
+        return 0;
     }
 
     public static void viewportRaw(int x, int y, int w, int h) {

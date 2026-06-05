@@ -17,5 +17,9 @@ run/
 # Local scratch space for experiments.
 .scratch/
 
+# Build-output capture logs from tooling.
+build-*.log
+logs/
+
 # Per-user Claude Code settings.
 .claude/settings.local.json
