@@ -66,7 +66,7 @@ public final class SodiumOptionsPageIntegration {
             .add(OptionImpl.createBuilder(int.class, StereoOptionStorage.INSTANCE)
                 .setName(Component.translatable("stereoscopic.options.ipd.name"))
                 .setTooltip(Component.translatable("stereoscopic.options.ipd.tooltip"))
-                .setControl(opt -> new SliderControl(opt, 55, 75, 1,
+                .setControl(opt -> new SliderControl(opt, 55, 100, 1,
                     v -> Component.literal(v + " mm")))
                 .setBinding(
                     (s, v) -> s.ipd = v / 1000f,

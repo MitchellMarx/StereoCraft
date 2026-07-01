@@ -281,6 +281,12 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
         noTranslucents = activeNoTrans;
         noHand          = activeNoHand;
 
+        // Rebind Voxy's Iris-mode FBs to the active eye's bank (they live outside
+        // ownedFramebuffers so the walk above misses them). Inert on NeoForge —
+        // voxy-neoforge excludes its Iris pipeline; see VoxyEyeRebindHooks.
+        com.mitchellmarx.stereoscopic.compat.voxy.VoxyEyeRebindHooks
+            .rebindForEye(sourceBank, stereoscopic$reverseMap);
+
         stereoscopic$activeEye = eyeIndex;
     }
 

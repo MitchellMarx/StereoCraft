@@ -52,6 +52,11 @@ dependencies {
     compileOnly("maven.modrinth:iris:${project.property("iris_version")}+${project.property("minecraft_version")}-neoforge")
     runtimeOnly("maven.modrinth:iris:${project.property("iris_version")}+${project.property("minecraft_version")}-neoforge")
 
+    // Voxy: compile-only symbol source for the (disabled) VoxyEyeRebindHooks Iris-mode
+    // rebind. The Fabric jar carries the me.cortex.voxy.client.iris.* classes that
+    // voxy-neoforge excludes; NOT added at runtime (the hook is hard-disabled).
+    compileOnly("maven.modrinth:voxy:${project.property("voxy_version")}")
+
     // SodiumOptionsAPI + Forgified Fabric API: optional soft deps from the
     // Aeronautics modpack (no Modrinth maven for SOAPI). SOAPI's OptionGUIConstruction.EVENT
     // is a net.fabricmc.fabric.api.event.Event which lives in forgified-fabric-api.
