@@ -5,7 +5,7 @@
   "stereoscopic.options.mode.off": "Off",
   "stereoscopic.options.mode.sbs_half": "SBS Half",
   "stereoscopic.options.ipd.name": "IPD (meters)",
-  "stereoscopic.options.ipd.tooltip": "Interpupillary distance — the horizontal eye separation used to compute per-eye camera offset. Default 0.064 m matches the human-average IPD; the 55–75 mm slider range covers ~99% of adults comfortably.",
+  "stereoscopic.options.ipd.tooltip": "Interpupillary distance / stereo strength — the horizontal eye separation used to compute per-eye camera offset. Default 0.064 m matches the human-average IPD (real humans are ~55–77 mm). Values above ~77 mm are hyperstereo: exaggerated depth / stronger SBS pop, not anatomically realistic. Max 100 mm.",
   "stereoscopic.options.convergence.name": "Convergence distance",
   "stereoscopic.options.convergence.tooltip": "Off-axis convergence depth in blocks. Objects at this depth sit at the screen plane (zero parallax); closer objects pop out, farther ones recede. 0 = parallel-axis (no shear, everything pops out).",
   "stereoscopic.options.convergence.off": "off (parallel)",

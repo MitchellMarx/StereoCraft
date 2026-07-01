@@ -52,7 +52,10 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
                     .addOption(builder.createIntegerOption(ID_IPD)
                         .setName(Component.translatable("stereoscopic.options.ipd.name"))
                         .setTooltip(Component.translatable("stereoscopic.options.ipd.tooltip"))
-                        .setRange(55, 75, 1)
+                        // Upper bound is stereo STRENGTH, not anatomical IPD. Real human IPD is
+                        // ~55-77mm (avg ~63); 100mm allows mild hyperstereo (exaggerated depth /
+                        // strong SBS pop) while staying fusible for most people.
+                        .setRange(55, 100, 1)
                         .setValueFormatter(mm -> Component.literal(String.format("%.3f m", mm / 1000.0)))
                         .setDefaultValue(64) // 0.064 m
                         .setBinding(mm -> StereoOptions.INSTANCE.ipd = clampedMetersFromMm(mm),
@@ -96,7 +99,7 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
     }
 
     private static float clampedMetersFromMm(int mm) {
-        int clamped = Math.max(55, Math.min(75, mm));
+        int clamped = Math.max(55, Math.min(100, mm));
         return clamped / 1000.0f;
     }
 

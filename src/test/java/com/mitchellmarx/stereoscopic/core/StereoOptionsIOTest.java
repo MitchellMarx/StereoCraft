@@ -54,15 +54,23 @@ class StereoOptionsIOTest {
         Files.writeString(hi, "{ \"ipd\": 99.0 }");
         StereoOptions loadedHi = new StereoOptions();
         StereoOptionsIO.readInto(hi, loadedHi);
-        assertEquals(0.075f, loadedHi.ipd, 1e-6f, "IPD clamped to [0.055, 0.075]");
+        assertEquals(0.100f, loadedHi.ipd, 1e-6f, "IPD clamped to [0.055, 0.100]");
 
-        // Older configs predating the narrowed range; clamp not preserve.
-        Path legacy = tmp.resolve("legacy.json");
-        Files.writeString(legacy, "{ \"ipd\": 0.080 }");
-        StereoOptions loadedLegacy = new StereoOptions();
-        StereoOptionsIO.readInto(legacy, loadedLegacy);
-        assertEquals(0.075f, loadedLegacy.ipd, 1e-6f,
-            "legacy 0.080 IPD clamped down to slider max");
+        // Above the slider max (100mm) clamps down to the max.
+        Path over = tmp.resolve("over.json");
+        Files.writeString(over, "{ \"ipd\": 0.120 }");
+        StereoOptions loadedOver = new StereoOptions();
+        StereoOptionsIO.readInto(over, loadedOver);
+        assertEquals(0.100f, loadedOver.ipd, 1e-6f,
+            "0.120 IPD clamped down to slider max 0.100");
+
+        // Within the widened range (e.g. mild hyperstereo) is preserved.
+        Path mid = tmp.resolve("mid.json");
+        Files.writeString(mid, "{ \"ipd\": 0.090 }");
+        StereoOptions loadedMid = new StereoOptions();
+        StereoOptionsIO.readInto(mid, loadedMid);
+        assertEquals(0.090f, loadedMid.ipd, 1e-6f,
+            "0.090 IPD is within [0.055, 0.100], preserved");
 
         Path lo = tmp.resolve("lo.json");
         Files.writeString(lo, "{ \"ipd\": 0.0 }");

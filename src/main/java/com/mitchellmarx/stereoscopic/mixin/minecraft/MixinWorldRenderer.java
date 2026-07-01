@@ -7,6 +7,7 @@ import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
+import net.minecraft.client.renderer.state.level.ParticlesRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -60,6 +61,34 @@ public abstract class MixinWorldRenderer {
                  target = "Lnet/minecraft/client/renderer/state/level/LevelRenderState;reset()V")
     )
     private void stereoscopic$deferResetUntilLastEye(LevelRenderState state, Operation<Void> original) {
+        StereoState s = StereoState.INSTANCE;
+        if (s.isActive() && s.getCurrentEye() == StereoState.Eye.LEFT) return;
+        original.call(state);
+    }
+
+    /**
+     * Same one-shot-state-between-eyes defer as
+     * {@link #stereoscopic$deferResetUntilLastEye}, but for particles.
+     *
+     * <p>{@code LevelRenderer.extractLevel} populates
+     * {@code LevelRenderState.particlesRenderState} once per frame (via
+     * {@code ParticleEngine.extract}); {@code renderLevel} (called once per eye)
+     * submits them then calls {@code particlesRenderState.reset()} to clear.
+     * Crucially, {@code LevelRenderState.reset()} does NOT touch
+     * {@code particlesRenderState} — the particle reset is a SEPARATE call — so
+     * the deferral above misses it. Without this second wrap, the LEFT eye
+     * drains the particle list and the RIGHT eye renders no particles.
+     *
+     * <p>Skip the reset on the LEFT eye so the RIGHT eye still sees the
+     * extracted particle states; let it run on RIGHT/MONO so per-frame cleanup
+     * still happens exactly once.
+     */
+    @WrapOperation(
+        method = "renderLevel",
+        at = @At(value = "INVOKE",
+                 target = "Lnet/minecraft/client/renderer/state/level/ParticlesRenderState;reset()V")
+    )
+    private void stereoscopic$deferParticleResetUntilLastEye(ParticlesRenderState state, Operation<Void> original) {
         StereoState s = StereoState.INSTANCE;
         if (s.isActive() && s.getCurrentEye() == StereoState.Eye.LEFT) return;
         original.call(state);

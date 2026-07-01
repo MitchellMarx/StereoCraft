@@ -136,30 +136,26 @@ public final class PerEyeRenderTargetHooks {
     }
 
     /**
-     * Advance Iris's {@code SystemTimeUniforms.COUNTER} between LEFT and RIGHT
-     * eye renderWorld iters so each eye's {@code ProgramUniforms.update()} sees
-     * {@code currentFrame != lastFrame} and re-uploads PER_FRAME uniforms with
-     * the RIGHT eye's cameraPosition, fog, sun position, etc.
+     * No-op since per-eye PER_FRAME refresh moved to
+     * {@code MixinProgramUniforms.stereoscopic$invalidateOnEyeSwitch}, which
+     * triggers refresh on the eye-switch boundary inside Iris itself without
+     * mutating {@code SystemTimeUniforms.COUNTER}.
      *
-     * <p>ONLY COUNTER — not TIMER.beginFrame or setRealTickDelta. Iris's own
-     * {@code iris$startFrame} fires all three at the top of GameRenderer.render;
-     * mirroring TIMER + tick-delta between eyes (commit 1af4841) caused visible
-     * fog/sun drift at sunrise/sunset, because the inter-eye wall-clock delta
-     * (~5–15ms) advances {@code frameTimeCounter} and re-samples the sun
-     * interpolation factor. Freezing both to LEFT eye's snapshot keeps the
-     * shaders symmetric; COUNTER is a discrete invalidation token only.
+     * <p>Bumping COUNTER worked for matrix/camera refresh but also made the
+     * shader-visible {@code frameCounter} (and {@code framemod2/4/8/600}, and
+     * {@code goldenRatio * mod(float(frameCounter), 3600.0)} dither salts)
+     * differ between eyes — every per-pixel stochastic branch landed on
+     * opposite sides on LEFT vs RIGHT, producing per-eye intensity divergence
+     * that surfaces as the persistent right-eye wash-out across all shader
+     * presets (the dither sites are in the always-on dither / lightmap / fog
+     * blocks, so disabling TAA / reflections / voxel lighting doesn't help).
      *
-     * <p>Side effect: 2 COUNTER increments per stereo frame (1 outer + 1 here).
-     * Affects TAA jitter / dither phase, which any per-eye stereo system has
-     * to handle anyway.
+     * <p>Kept as a public symbol because
+     * {@link com.mitchellmarx.stereoscopic.render.PerEyeRenderer#runForEachEye}
+     * still calls it; turning it into a no-op is the safe minimum change.
      */
     public static void irisStartFrameBetweenEyes() {
-        if (!IRIS_PRESENT) return;
-        try {
-            irisDoStartFrame();
-        } catch (Throwable t) {
-            Stereoscopic.LOG.warn("Iris inter-eye COUNTER bump failed; right eye may read left's PER_FRAME uniforms this frame", t);
-        }
+        // Intentionally empty. See javadoc.
     }
 
     private static void irisDoStartFrame() {

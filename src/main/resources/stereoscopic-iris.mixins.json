@@ -12,7 +12,9 @@
     "MixinIrisLodRenderProgram",
     "MixinFinalPassRenderer",
     "MixinIrisRenderingPipeline",
-    "MixinShadowRenderer"
+    "MixinShadowRenderer",
+    "MixinProgramUniforms",
+    "MixinIrisRenderSystem"
   ],
   "mixins": [],
   "injectors": { "defaultRequire": 0 }
