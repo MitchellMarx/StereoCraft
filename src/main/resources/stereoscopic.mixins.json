@@ -10,6 +10,7 @@
     "minecraft.MixinGuiRenderer",
     "minecraft.MixinGuiRendererScissor",
     "minecraft.MixinWorldRenderer",
+    "minecraft.MixinParticlesRenderState",
     "minecraft.MixinGlDevice",
     "minecraft.MixinGlStateManager",
     "minecraft.MixinMouse",
