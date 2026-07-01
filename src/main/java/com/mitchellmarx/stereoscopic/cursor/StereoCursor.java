@@ -1,7 +1,6 @@
 package com.mitchellmarx.stereoscopic.cursor;
 
 import com.mitchellmarx.stereoscopic.config.StereoConfig;
-import com.mitchellmarx.stereoscopic.core.StereoHudMode;
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.input.Mouse;
@@ -119,7 +118,6 @@ public final class StereoCursor {
     private static boolean shouldRemap() {
         final StereoMode mode = StereoConfig.stereoscopicMode;
         if (mode == null || !mode.isActive()) return false;
-        if (StereoConfig.stereoHudMode != StereoHudMode.DUPLICATE) return false;
         if (!mode.isSideBySide() || !mode.isHalf()) return false;
         final Minecraft mc = Minecraft.getMinecraft();
         return mc != null && mc.currentScreen != null;

@@ -1,7 +1,5 @@
 package com.mitchellmarx.stereoscopic.config;
 
-import com.mitchellmarx.stereoscopic.core.StereoDebugEye;
-import com.mitchellmarx.stereoscopic.core.StereoHudMode;
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import org.junit.jupiter.api.Test;
 
@@ -14,13 +12,9 @@ class StereoConfigTest {
         // Resetting to defaults is a pure assignment to public statics — no Forge Configuration required.
         StereoConfig.stereoscopicMode = StereoMode.OFF;
         StereoConfig.stereoIpd = 0.064f;
-        StereoConfig.stereoHudMode = StereoHudMode.DUPLICATE;
-        StereoConfig.stereoDebugForceEye = StereoDebugEye.OFF;
 
         assertEquals(StereoMode.OFF,             StereoConfig.stereoscopicMode);
         assertEquals(0.064f,                     StereoConfig.stereoIpd, 1e-6f);
-        assertEquals(StereoHudMode.DUPLICATE,    StereoConfig.stereoHudMode);
-        assertEquals(StereoDebugEye.OFF,         StereoConfig.stereoDebugForceEye);
     }
 
     @Test

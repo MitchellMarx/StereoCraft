@@ -12,8 +12,6 @@ class StereoStateTest {
     void resetConfig() {
         StereoConfig.stereoscopicMode    = StereoMode.OFF;
         StereoConfig.stereoIpd           = 0.064f;
-        StereoConfig.stereoHudMode       = StereoHudMode.DUPLICATE;
-        StereoConfig.stereoDebugForceEye = StereoDebugEye.OFF;
         // Reset transient state on the singleton too.
         StereoState.INSTANCE.beginFrame();
         StereoState.INSTANCE.endFrame();

@@ -1,6 +1,5 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
-import com.mitchellmarx.stereoscopic.core.StereoHudMode;
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -33,7 +32,6 @@ public abstract class MixinFMLCommonHandler_Stereo {
     private boolean stereoscopic$stereoRenderTickEnd(EventBus bus, Event event) {
         final StereoMode mode = StereoState.INSTANCE.getFrameMode();
         final boolean stereoActive = mode != null && mode.isActive()
-            && StereoState.INSTANCE.getFrameHudMode() == StereoHudMode.DUPLICATE
             && mode.isSideBySide() && mode.isHalf();
         if (!stereoActive) {
             return bus.post(event);

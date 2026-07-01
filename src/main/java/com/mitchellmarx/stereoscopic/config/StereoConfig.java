@@ -1,7 +1,5 @@
 package com.mitchellmarx.stereoscopic.config;
 
-import com.mitchellmarx.stereoscopic.core.StereoDebugEye;
-import com.mitchellmarx.stereoscopic.core.StereoHudMode;
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import net.minecraftforge.common.config.Configuration;
 import org.apache.logging.log4j.LogManager;
@@ -21,12 +19,6 @@ import java.io.File;
  *   <li>{@link #stereoSwapEyes} — Sodium UI tick-box; swaps which eye-render goes to which
  *       physical eye, for SBS displays / VR passthrough setups with reversed half-assignment
  * </ul>
- *
- * <p>Internal runtime state (not persisted, no UI — per spec §"Config & state"):
- * <ul>
- *   <li>{@link #stereoHudMode} — default DUPLICATE; flipped at runtime by debug code
- *   <li>{@link #stereoDebugForceEye} — default OFF; flipped at runtime by debug code
- * </ul>
  */
 public final class StereoConfig {
 
@@ -36,8 +28,6 @@ public final class StereoConfig {
     public static volatile float           stereoIpd           = 0.064f;
     public static volatile float           stereoConvergence   = 4.0f;
     public static volatile boolean         stereoSwapEyes      = false;
-    public static volatile StereoHudMode   stereoHudMode       = StereoHudMode.DUPLICATE;
-    public static volatile StereoDebugEye  stereoDebugForceEye = StereoDebugEye.OFF;
 
     private static Configuration config;
 
@@ -61,7 +51,7 @@ public final class StereoConfig {
     private static void read() {
         final String modeName = config.getString(
             "stereoscopicMode", "general", StereoMode.OFF.name(),
-            "Stereo layout. Values: OFF, SBS_HALF, SBS_FULL, OU_HALF, OU_FULL. Default OFF.");
+            "Stereo layout. Values: OFF, SBS_HALF. Default OFF.");
         stereoscopicMode = parseEnum(StereoMode.class, modeName, StereoMode.OFF);
 
         stereoIpd = (float) config.get("general", "stereoIpd", 0.064,

@@ -27,11 +27,10 @@ class StereoModeTest {
     }
 
     @Test
-    void isHalf_matches_HALF_variants() {
+    void isHalf_and_isSideBySide_true_only_for_SBS_HALF() {
         assertEquals(true, StereoMode.SBS_HALF.isHalf());
-        assertEquals(true, StereoMode.OU_HALF.isHalf());
-        assertEquals(false, StereoMode.SBS_FULL.isHalf());
-        assertEquals(false, StereoMode.OU_FULL.isHalf());
+        assertEquals(true, StereoMode.SBS_HALF.isSideBySide());
         assertEquals(false, StereoMode.OFF.isHalf());
+        assertEquals(false, StereoMode.OFF.isSideBySide());
     }
 }

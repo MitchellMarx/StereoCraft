@@ -1,30 +1,27 @@
 package com.mitchellmarx.stereoscopic.core;
 
 /**
- * Stereoscopic output layout. SBS splits left/right; OU splits top/bottom. HALF variants render
- * each eye at half the split-axis dimension (native aspect) — what SBS-3D viewers expect. FULL
- * variants render at the full split-axis dimension (squished), for legacy frame-packed displays.
+ * Stereoscopic output layout. SBS_HALF splits the display left/right, rendering each eye at half
+ * the horizontal dimension (native aspect) — what SBS-3D viewers expect. OFF disables stereo.
+ *
+ * <p>Earlier prototypes also carried SBS_FULL and over-under (OU_HALF/OU_FULL) variants; those
+ * were prototyping scaffolding and are not part of the canonical feature set. Over-under is not
+ * supported. The {@link #isSideBySide()} / {@link #isHalf()} helpers are retained so the eye-rect
+ * math in the renderer reads the same as the other ports.
  */
 public enum StereoMode {
     OFF,
-    SBS_HALF,
-    SBS_FULL,
-    OU_HALF,
-    OU_FULL;
+    SBS_HALF;
 
     public boolean isActive() {
         return this != OFF;
     }
 
     public boolean isSideBySide() {
-        return this == SBS_HALF || this == SBS_FULL;
-    }
-
-    public boolean isOverUnder() {
-        return this == OU_HALF || this == OU_FULL;
+        return this == SBS_HALF;
     }
 
     public boolean isHalf() {
-        return this == SBS_HALF || this == OU_HALF;
+        return this == SBS_HALF;
     }
 }

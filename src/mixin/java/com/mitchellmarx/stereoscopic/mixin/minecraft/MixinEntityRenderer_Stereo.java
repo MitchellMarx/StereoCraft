@@ -3,7 +3,6 @@ package com.mitchellmarx.stereoscopic.mixin.minecraft;
 import com.gtnewhorizons.angelica.hudcaching.HUDCaching;
 import com.mitchellmarx.stereoscopic.compat.chromatictooltips.ChromaticTooltipsCompat;
 import com.mitchellmarx.stereoscopic.config.StereoConfig;
-import com.mitchellmarx.stereoscopic.core.StereoHudMode;
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.cursor.CursorPresentThread;
@@ -33,8 +32,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Priority 1100 (above HUD_CACHING's default) so our renderGameOverlay redirect wins. The
- * non-stereo / STRETCH paths delegate to {@link HUDCaching#renderCachedHud} to preserve
- * HUD-caching perf for users who didn't enable stereo.
+ * non-stereo path delegates to {@link HUDCaching#renderCachedHud} to preserve HUD-caching perf
+ * for users who didn't enable stereo.
  */
 @Mixin(value = EntityRenderer.class, priority = 1100)
 public abstract class MixinEntityRenderer_Stereo {
@@ -190,17 +189,7 @@ public abstract class MixinEntityRenderer_Stereo {
             return;
         }
 
-        final StereoHudMode hudMode = StereoState.INSTANCE.getFrameHudMode();
-        if (hudMode == StereoHudMode.HIDE) {
-            return;
-        }
-        if (hudMode == StereoHudMode.STRETCH) {
-            HUDCaching.renderCachedHud(
-                Minecraft.getMinecraft().entityRenderer, ingame, partialTicks, hasScreen, mouseX, mouseY);
-            return;
-        }
-
-        // DUPLICATE: keep HUD caching alive — render once into the cache FBO at full resolution,
+        // Keep HUD caching alive — render once into the cache FBO at full resolution,
         // then blit the cache into each eye's viewport. MixinHUDCaching_Stereo's @Redirects make
         // the published renderCachedHud stereo-safe (once-per-frame Xaero gate + full-screen
         // viewport for the cache fill); we drive it twice with eye-specific viewports.
@@ -242,15 +231,6 @@ public abstract class MixinEntityRenderer_Stereo {
     private void stereoscopic$stereoDrawScreen(GuiScreen screen, int mouseX, int mouseY, float partialTicks) {
         final StereoMode mode = StereoState.INSTANCE.getFrameMode();
         if (mode == null || !mode.isActive()) {
-            screen.drawScreen(mouseX, mouseY, partialTicks);
-            return;
-        }
-
-        final StereoHudMode hudMode = StereoState.INSTANCE.getFrameHudMode();
-        if (hudMode == StereoHudMode.HIDE) {
-            return;
-        }
-        if (hudMode == StereoHudMode.STRETCH) {
             screen.drawScreen(mouseX, mouseY, partialTicks);
             return;
         }
@@ -337,7 +317,6 @@ public abstract class MixinEntityRenderer_Stereo {
     private boolean stereoscopic$stereoPostEvent(EventBus bus, Event event) {
         final StereoMode mode = StereoState.INSTANCE.getFrameMode();
         final boolean stereoActive = mode != null && mode.isActive()
-            && StereoState.INSTANCE.getFrameHudMode() == StereoHudMode.DUPLICATE
             && mode.isSideBySide() && mode.isHalf();
         if (!stereoActive) {
             return bus.post(event);

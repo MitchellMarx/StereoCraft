@@ -1,6 +1,5 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
-import com.mitchellmarx.stereoscopic.core.StereoHudMode;
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import net.minecraft.client.Minecraft;
@@ -32,7 +31,6 @@ public class MixinMinecraft_StereoAchievement {
     private void stereoscopic$stereoAchievement(GuiAchievement popup) {
         final StereoMode mode = StereoState.INSTANCE.getFrameMode();
         final boolean stereoActive = mode != null && mode.isActive()
-            && StereoState.INSTANCE.getFrameHudMode() == StereoHudMode.DUPLICATE
             && mode.isSideBySide() && mode.isHalf();
         if (!stereoActive) {
             popup.func_146254_a();

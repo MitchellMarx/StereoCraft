@@ -87,11 +87,11 @@ public abstract class MixinSodiumGameOptionPages_StereoToggle {
                 .build())
             .add(OptionImpl.createBuilder(int.class, angelicaOpts)
                 .setName("Eye separation (IPD)")
-                .setTooltip("Distance between the two eye cameras. 64 mm matches average human IPD.")
-                .setControl(opt -> new SliderControl(opt, 55, 75, 1, mm -> String.format("%.3f m", mm / 1000.0)))
+                .setTooltip("Eye separation / stereo strength. 64 mm matches average human IPD (real ~55-77 mm); above ~77 mm is hyperstereo (exaggerated depth). Max 100 mm.")
+                .setControl(opt -> new SliderControl(opt, 55, 100, 1, mm -> String.format("%.3f m", mm / 1000.0)))
                 .setBinding(
                     (opts, mm) -> {
-                        StereoConfig.stereoIpd = Math.max(0.055f, Math.min(0.075f, mm / 1000f));
+                        StereoConfig.stereoIpd = Math.max(0.055f, Math.min(0.100f, mm / 1000f));
                         StereoConfig.save();
                     },
                     opts -> Math.round(StereoConfig.stereoIpd * 1000f))

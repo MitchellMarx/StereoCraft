@@ -60,25 +60,16 @@ public class StereoState {
     public long getFrameSequence() { return frameSequence; }
 
     public Eye getCurrentEye() {
-        StereoDebugEye debug = StereoConfig.stereoDebugForceEye;
-        if (debug != null && debug != StereoDebugEye.OFF) {
-            return debug == StereoDebugEye.LEFT ? Eye.LEFT : Eye.RIGHT;
-        }
         return currentEye;
     }
 
     public boolean isActive() {
-        StereoDebugEye debug = StereoConfig.stereoDebugForceEye;
-        if (debug != null && debug != StereoDebugEye.OFF) {
-            return true;
-        }
         return active;
     }
 
     /** Cached at frame start so config flips mid-frame don't cause inconsistency. */
     @Getter private StereoMode frameMode = StereoMode.OFF;
     @Getter private float frameIpd = 0.064f;
-    @Getter private StereoHudMode frameHudMode = StereoHudMode.DUPLICATE;
 
     private StereoState() {}
 
@@ -95,9 +86,6 @@ public class StereoState {
         active = true;
         frameMode = mode;
         frameIpd = StereoConfig.stereoIpd;
-        frameHudMode = StereoConfig.stereoHudMode != null
-            ? StereoConfig.stereoHudMode
-            : StereoHudMode.DUPLICATE;
         currentEye = Eye.MONO;
         CursorPresentThread.ensureStarted();
         return true;
@@ -106,8 +94,8 @@ public class StereoState {
     public void endFrame() {
         active = false;
         currentEye = Eye.MONO;
-        // Intentionally do NOT reset frameMode/frameIpd/frameHudMode here. RenderTickEvent.END
-        // fires from FMLCommonHandler.onRenderTickEnd *after* updateCameraAndRender returns, and
+        // Intentionally do NOT reset frameMode/frameIpd here. RenderTickEvent.END fires from
+        // FMLCommonHandler.onRenderTickEnd *after* updateCameraAndRender returns, and
         // MixinFMLCommonHandler_Stereo needs the frame's stereo config still readable so it can
         // duplicate the event per-eye. beginFrame() overwrites these on the next frame.
     }
@@ -162,8 +150,6 @@ public class StereoState {
      *  before the first {@link #beginFrame()} — a cached value would still be false there and
      *  allocate mono targets, cross-contaminating the first stereo frame. */
     public int stereoEyeCount() {
-        final StereoDebugEye debug = StereoConfig.stereoDebugForceEye;
-        if (debug != null && debug != StereoDebugEye.OFF) return 2;
         final StereoMode mode = StereoConfig.stereoscopicMode;
         return (mode != null && mode.isActive()) ? 2 : 1;
     }
