@@ -82,11 +82,21 @@ public abstract class MixinWorldRenderer {
      * <p>Skip the reset on the LEFT eye so the RIGHT eye still sees the
      * extracted particle states; let it run on RIGHT/MONO so per-frame cleanup
      * still happens exactly once.
+     *
+     * <p><b>Target is {@code lambda$addMainPass$0}, NOT {@code renderLevel}.</b> In
+     * 26.1.2 the particle {@code submit()} + {@code reset()} run inside the
+     * framegraph main-pass lambda, not directly in {@code renderLevel} (the
+     * {@code LevelRenderState.reset()} above IS in renderLevel — different call).
+     * {@code require = 0} makes this non-fatal: if the synthetic lambda name ever
+     * shifts and the target isn't found, this becomes a silent no-op (particles
+     * may render one-eyed) instead of a critical injection failure that would
+     * crash the whole mixin on load.
      */
     @WrapOperation(
-        method = "renderLevel",
+        method = "lambda$addMainPass$0",
         at = @At(value = "INVOKE",
-                 target = "Lnet/minecraft/client/renderer/state/level/ParticlesRenderState;reset()V")
+                 target = "Lnet/minecraft/client/renderer/state/level/ParticlesRenderState;reset()V"),
+        require = 0
     )
     private void stereoscopic$deferParticleResetUntilLastEye(ParticlesRenderState state, Operation<Void> original) {
         StereoState s = StereoState.INSTANCE;
