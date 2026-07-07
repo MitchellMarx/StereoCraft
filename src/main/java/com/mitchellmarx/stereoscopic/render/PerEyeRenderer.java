@@ -37,9 +37,23 @@ public final class PerEyeRenderer {
     public static TextureTarget ensureScratchFb(int w, int h) {
         if (scratchFb != null && scratchFbW == w && scratchFbH == h) return scratchFb;
         if (scratchFb != null) {
-            try { scratchFb.destroyBuffers(); }
-            catch (Throwable t) { Stereoscopic.LOG.warn("Scratch FB delete failed during resize; GPU FB leaked", t); }
-            scratchFb = null;
+            // Resize IN PLACE (swap buffers on the same instance) rather than
+            // destroy+recreate: vanilla treats render-target instances as
+            // stable and may hold references across frames (26.2 SkyRenderer
+            // captured the substituted scratch at construction — a destroyed
+            // instance then NPEs with null texture views on the next sky
+            // pass; the "resize crashes the game" bug).
+            try {
+                scratchFb.resize(w, h);
+                scratchFbW = w;
+                scratchFbH = h;
+                return scratchFb;
+            } catch (Throwable t) {
+                Stereoscopic.LOG.warn("Scratch FB in-place resize failed; recreating", t);
+                try { scratchFb.destroyBuffers(); }
+                catch (Throwable t2) { Stereoscopic.LOG.warn("Scratch FB delete failed during resize; GPU FB leaked", t2); }
+                scratchFb = null;
+            }
         }
         // 26.2: TextureTarget now takes an explicit GpuFormat; RGBA8_UNORM
         // matches the vanilla main target's color format.

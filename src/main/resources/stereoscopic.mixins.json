@@ -14,6 +14,7 @@
     "minecraft.MixinWorldRenderer",
     "minecraft.MixinGlStateManager",
     "minecraft.MixinMouse",
+    "minecraft.MixinSkyRenderer",
     "minecraft.MixinWindow",
     "minecraft.MouseAccessor",
     "minecraft.CameraAccessor",
