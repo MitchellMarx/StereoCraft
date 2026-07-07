@@ -11,7 +11,6 @@ import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -25,78 +24,42 @@ public abstract class MixinMinecraftClient {
     // lives in MixinGameRenderer).
 
     /**
-     * Route MC's per-frame window presentation through the async cursor
-     * present thread when it's running. Two threads racing for the same
-     * window would interleave swaps; instead MC's whole surface sequence is
-     * skipped and the cursor thread captures the main FB into a shared
+     * Feed the async cursor present thread and hand it window ownership.
+     * When it runs, the cursor thread captures the main FB into a shared
      * texture, renders the cursor overlay, and {@code SwapBuffers} itself on
-     * its own GL context bound to the same window.
+     * its own GL context bound to the same window; MC's own swap is
+     * suppressed in {@link MixinGlSurface} so the two never interleave.
      *
      * <p>26.2 replaced {@code RenderTarget.blitToScreen()} (the 26.1.2 hook,
      * {@code MixinFramebuffer}) with a validated swapchain state machine:
      * {@code Minecraft.renderFrame} does {@code GpuSurface.acquireNextTexture()}
-     * → {@code blitFromTexture(encoder, mainTargetView)} → {@code present()},
-     * and each step throws unless the previous one ran ("Must blit to surface
-     * before presenting!" when only the blit is cancelled). So unlike 26.1.2,
-     * ALL THREE calls must be skipped together — the surface then stays
-     * consistently un-acquired and MC never touches the window while the
-     * cursor thread owns it. The blit is the analogous capture point — same
-     * timing (frame complete, pre-present) — so publishFrame() fires there.
-     * {@link MixinGlSurface} still suppresses the backend swap as
-     * defense-in-depth for any other {@code present()} path.
-     *
-     * <p>The skip decision is made ONCE per frame at acquire time and cached
-     * in {@code stereoscopic$surfaceSkippedThisFrame}: the cursor thread is
-     * started/stopped by StereoCursor.tick, which runs INSIDE renderFrame
-     * (GameRenderer.render HEAD) — i.e. between the acquire and the
-     * blit/present — so three independent isRunning() reads could disagree
-     * mid-frame and strand the state machine (acquired-but-never-presented →
-     * "Cannot acquire a surface while it is already acquired" next frame).
-     * With the cached flag, a transition frame completes whichever protocol
-     * it started ({@link MixinGlSurface} keeps the real swap suppressed
-     * either way once the thread is up).
+     * → {@code blitFromTexture(encoder, mainTargetView)} → {@code present()}.
+     * Unlike 26.1.2 the vanilla cycle CANNOT be starved: skipping only the
+     * blit trips present()'s "Must blit to surface before presenting!"
+     * validation (startup crash), and skipping the acquire dead-ends the
+     * whole tail — the blit and present sites are each guarded by
+     * {@code isAcquired()}, so nothing (including this capture hook) runs
+     * and the window stays black. So the full acquire→blit→present cycle is
+     * left intact — vanilla's bookkeeping stays consistent, its backbuffer
+     * write is redundant but harmless — and only the REAL swap
+     * ({@code glfwSwapBuffers} inside {@code GlSurface.present}) is
+     * suppressed. The blit is the analogous 26.1.2 capture point (frame
+     * complete, pre-present), so publishFrame() rides it. Worst case of the
+     * shared-FB0 write is one refresh showing the frame without the cursor
+     * sprite.
      */
-    @Unique
-    private boolean stereoscopic$surfaceSkippedThisFrame;
-
-    @WrapOperation(
-        method = "renderFrame(Z)V",
-        at = @At(value = "INVOKE",
-                 target = "Lcom/mojang/blaze3d/systems/GpuSurface;acquireNextTexture()V")
-    )
-    private void stereoscopic$skipAcquireWhenCursorThreadOwnsPresent(GpuSurface surface,
-                                                                     Operation<Void> original) {
-        stereoscopic$surfaceSkippedThisFrame = CursorPresentThread.isRunning();
-        if (!stereoscopic$surfaceSkippedThisFrame) {
-            original.call(surface);
-        }
-    }
-
     @WrapOperation(
         method = "renderFrame(Z)V",
         at = @At(value = "INVOKE",
                  target = "Lcom/mojang/blaze3d/systems/GpuSurface;blitFromTexture(Lcom/mojang/blaze3d/systems/CommandEncoder;Lcom/mojang/blaze3d/textures/GpuTextureView;)V")
     )
-    private void stereoscopic$routePresentThroughCursorThread(GpuSurface surface,
-                                                              CommandEncoder encoder,
-                                                              GpuTextureView view,
-                                                              Operation<Void> original) {
-        if (!stereoscopic$surfaceSkippedThisFrame) {
-            original.call(surface, encoder, view);
-            return;
-        }
-        CursorPresentThread.publishFrame();
-    }
-
-    @WrapOperation(
-        method = "renderFrame(Z)V",
-        at = @At(value = "INVOKE",
-                 target = "Lcom/mojang/blaze3d/systems/GpuSurface;present()V")
-    )
-    private void stereoscopic$skipPresentWhenCursorThreadOwnsPresent(GpuSurface surface,
-                                                                     Operation<Void> original) {
-        if (!stereoscopic$surfaceSkippedThisFrame) {
-            original.call(surface);
+    private void stereoscopic$publishFrameToCursorThread(GpuSurface surface,
+                                                         CommandEncoder encoder,
+                                                         GpuTextureView view,
+                                                         Operation<Void> original) {
+        original.call(surface, encoder, view);
+        if (CursorPresentThread.isRunning()) {
+            CursorPresentThread.publishFrame();
         }
     }
 
