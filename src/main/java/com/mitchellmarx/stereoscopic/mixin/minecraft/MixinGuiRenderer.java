@@ -7,7 +7,6 @@ import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
 import com.mitchellmarx.stereoscopic.render.StereoBlur;
 import com.mitchellmarx.stereoscopic.render.ViewportMath;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.Window;
@@ -16,7 +15,6 @@ import net.minecraft.client.gui.render.GuiRenderer;
 import net.minecraft.client.renderer.CubeMap;
 import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fc;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
@@ -31,20 +29,21 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 @Mixin(GuiRenderer.class)
 public abstract class MixinGuiRenderer {
 
+    // 26.2: render(GpuBufferSlice) -> render() and draw(GpuBufferSlice) ->
+    // draw() — the fog GpuBufferSlice parameter is gone from both.
     @WrapOperation(
-        method = "render(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;)V",
+        method = "render()V",
         at = @At(value = "INVOKE",
-                 target = "Lnet/minecraft/client/gui/render/GuiRenderer;draw(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;)V")
+                 target = "Lnet/minecraft/client/gui/render/GuiRenderer;draw()V")
     )
     private void stereoscopic$twoPassRenderPreparedDraws(GuiRenderer self,
-                                                          GpuBufferSlice fogSlice,
                                                           Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) {
-            original.call(self, fogSlice);
+            original.call(self);
             return;
         }
         PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.GUI, () -> {
-            original.call(self, fogSlice);
+            original.call(self);
         });
     }
 
@@ -61,7 +60,7 @@ public abstract class MixinGuiRenderer {
      * between eyes, which is correct for a skybox at infinity (zero parallax).
      */
     @WrapOperation(
-        method = "render(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;)V",
+        method = "render()V",
         at = @At(value = "INVOKE",
                  target = "Lnet/minecraft/client/renderer/CubeMap;render(FF)V")
     )
@@ -123,13 +122,15 @@ public abstract class MixinGuiRenderer {
      * JOML chains right-to-left in vector application: {@code m.translate(t).scale(s)}
      * = {@code M * T * S} = "scale first, then translate."
      */
+    // 26.2: writeTransform collapsed from (Matrix4fc,Vector4fc,Vector3fc,
+    // Matrix4fc) to a single Matrix4f — the model-view we compress per eye.
     @ModifyArg(
-        method = "draw(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;)V",
+        method = "draw()V",
         at = @At(value = "INVOKE",
-                 target = "Lnet/minecraft/client/renderer/DynamicUniforms;writeTransform(Lorg/joml/Matrix4fc;Lorg/joml/Vector4fc;Lorg/joml/Vector3fc;Lorg/joml/Matrix4fc;)Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"),
+                 target = "Lnet/minecraft/client/renderer/DynamicUniforms;writeTransform(Lorg/joml/Matrix4f;)Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"),
         index = 0
     )
-    private Matrix4fc stereoscopic$perEyeHudTransform(Matrix4fc original) {
+    private Matrix4f stereoscopic$perEyeHudTransform(Matrix4f original) {
         StereoState s = StereoState.INSTANCE;
         if (!s.isActive() || !s.isInGuiPass()) return original;
 
@@ -168,7 +169,7 @@ public abstract class MixinGuiRenderer {
      * the shader there (kernel sees only that eye's pixels), and copies back.
      */
     @WrapOperation(
-        method = "draw(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;)V",
+        method = "draw()V",
         at = @At(value = "INVOKE",
                  target = "Lnet/minecraft/client/renderer/GameRenderer;processBlurEffect()V")
     )
