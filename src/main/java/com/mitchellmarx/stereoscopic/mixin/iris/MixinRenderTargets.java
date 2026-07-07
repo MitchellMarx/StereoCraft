@@ -71,6 +71,10 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
     // Snapshot of the eye state on resizeIfNeeded entry, restored in RETURN.
     @Unique private int stereoscopic$resizeSavedEye = 0;
     @Unique private boolean stereoscopic$resizeFieldWasOnRight = false;
+    // One-shot diagnostic: log the first post-resize eye-rebind walk so a
+    // user log can distinguish "FBs still bound to dead pre-resize textures"
+    // (misses > 0) from a healthy rebind.
+    @Unique private boolean stereoscopic$logNextRebind = false;
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void stereoscopic$allocSiblingBank(int width, int height, GpuTexture depthTexture,
@@ -130,11 +134,40 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             .setPixelFormat(settings.getInternalFormat().getPixelFormat())
             .build();
         stereoscopic$rightTargets[i] = mirror;
+        // Fresh GL textures have UNDEFINED contents, and Iris's full-clear
+        // pass runs against whichever bank the FBs point at when it fires
+        // (on resize: once, mid-LEFT-eye) — a never-cleared RIGHT-bank
+        // temporal buffer (TAA history, cloud accumulation) feeds garbage
+        // into the pack's temporal blend forever. Clear both textures now.
+        stereoscopic$clearTexture(mirror.getMainTexture());
+        stereoscopic$clearTexture(mirror.getAltTexture());
         int packed = i << 1;
         stereoscopic$reverseMap.put(targets[i].getMainTexture(), packed);
         stereoscopic$reverseMap.put(targets[i].getAltTexture(),  packed | 1);
         stereoscopic$reverseMap.put(mirror.getMainTexture(),     packed);
         stereoscopic$reverseMap.put(mirror.getAltTexture(),      packed | 1);
+    }
+
+    @Unique
+    private static void stereoscopic$clearTexture(int texId) {
+        if (texId == 0) return;
+        int prevDraw = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        boolean wasScissor = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+        if (wasScissor) org.lwjgl.opengl.GL11.glDisable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+        int fbo = org.lwjgl.opengl.GL30.glGenFramebuffers();
+        try {
+            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER, fbo);
+            org.lwjgl.opengl.GL30.glFramebufferTexture2D(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER,
+                org.lwjgl.opengl.GL30.GL_COLOR_ATTACHMENT0, org.lwjgl.opengl.GL11.GL_TEXTURE_2D, texId, 0);
+            if (org.lwjgl.opengl.GL30.glCheckFramebufferStatus(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER)
+                    == org.lwjgl.opengl.GL30.GL_FRAMEBUFFER_COMPLETE) {
+                org.lwjgl.opengl.GL30.glClearBufferfv(org.lwjgl.opengl.GL11.GL_COLOR, 0, new float[]{0f, 0f, 0f, 0f});
+            }
+        } finally {
+            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
+            org.lwjgl.opengl.GL30.glDeleteFramebuffers(fbo);
+            if (wasScissor) org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+        }
     }
 
     @Unique
@@ -171,9 +204,12 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
         int colortexIdx = meta >>> 1;
         boolean isAlt = (meta & 1) == 1;
         if (colortexIdx < 0 || colortexIdx >= targets.length) return referenceTexId;
-        RenderTarget rt = (stereoscopic$activeEye == 0)
-            ? targets[colortexIdx]
-            : (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[colortexIdx] : null);
+        // == 1, NOT != 0: the post-resize sentinel (-1) must resolve LEFT —
+        // it is set mid-LEFT-eye, and the rest of that eye's final pass would
+        // otherwise copy into the RIGHT bank.
+        RenderTarget rt = (stereoscopic$activeEye == 1)
+            ? (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[colortexIdx] : null)
+            : targets[colortexIdx];
         if (rt == null) return referenceTexId;
         return isAlt ? rt.getAltTexture() : rt.getMainTexture();
     }
@@ -186,13 +222,15 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
 
         RenderTarget[] sourceBank = (eyeIndex == 0) ? targets : stereoscopic$rightTargets;
 
+        int diagWalked = 0, diagRebound = 0, diagMissed = 0;
         for (GlFramebuffer fb : ownedFramebuffers) {
             Int2IntMap attMap = ((MixinGlFramebuffer)(Object) fb).stereoscopic$getAttachments();
             int[] slots = attMap.keySet().toIntArray();
             for (int slot : slots) {
                 int currentTexId = attMap.get(slot);
                 int meta = stereoscopic$reverseMap.get(currentTexId);
-                if (meta < 0) continue;
+                diagWalked++;
+                if (meta < 0) { diagMissed++; continue; }
                 int colortexIdx = meta >>> 1;
                 boolean isAlt = (meta & 1) == 1;
                 if (colortexIdx >= sourceBank.length) continue;
@@ -201,8 +239,16 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
                 int newTexId = isAlt ? rt.getAltTexture() : rt.getMainTexture();
                 if (newTexId != currentTexId) {
                     fb.addColorAttachment(slot, newTexId);
+                    diagRebound++;
                 }
             }
+        }
+        if (stereoscopic$logNextRebind) {
+            stereoscopic$logNextRebind = false;
+            Stereoscopic.LOG.info(
+                "[stereo] post-resize rebind walk (eye {}): {} attachments, {} rebound, {} not in reverseMap{}",
+                eyeIndex, diagWalked, diagRebound, diagMissed,
+                diagMissed > 0 ? " <- STALE: FBs still reference pre-resize textures" : "");
         }
 
         // Voxy's IrisVoxyRenderPipeline owns two framebuffers outside of
@@ -356,6 +402,9 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             // sentinel forces the next setActiveEye to walk + rebind regardless
             // of whether N matches the saved activeEye.
             stereoscopic$activeEye = -1;
+            stereoscopic$logNextRebind = true;
+            Stereoscopic.LOG.info("[stereo] Iris bank rebuilt after resize -> {}x{} ({} owned FBs)",
+                cachedWidth, cachedHeight, ownedFramebuffers.size());
         } catch (Throwable t) {
             stereoscopic$dropSiblingBank("resize failed", t);
         }
