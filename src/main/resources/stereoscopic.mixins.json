@@ -4,20 +4,20 @@
   "package": "com.mitchellmarx.stereoscopic.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "minecraft.MixinFramebuffer",
     "minecraft.MixinGameRenderer",
+    "minecraft.MixinGui",
     "minecraft.MixinGlCommandEncoder",
+    "minecraft.MixinGlSurface",
     "minecraft.MixinGuiRenderer",
     "minecraft.MixinGuiRendererScissor",
     "minecraft.MixinWorldRenderer",
-    "minecraft.MixinParticlesRenderState",
-    "minecraft.MixinGlDevice",
     "minecraft.MixinGlStateManager",
     "minecraft.MixinMouse",
+    "minecraft.MixinWindow",
     "minecraft.MouseAccessor",
     "minecraft.CameraAccessor",
     "minecraft.MixinMinecraftClient",
-    "sodium.MixinSodiumWorldRenderer"
+    "sodium.MixinViewport"
   ],
   "mixins": [],
   "injectors": { "defaultRequire": 1 }

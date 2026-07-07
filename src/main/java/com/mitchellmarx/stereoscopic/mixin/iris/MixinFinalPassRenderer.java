@@ -10,12 +10,13 @@ import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.irisshaders.iris.pipeline.FinalPassRenderer;
 import net.minecraft.client.Minecraft;
+import org.joml.Vector4fc;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,7 +27,7 @@ import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
-import java.util.OptionalInt;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -83,7 +84,7 @@ public abstract class MixinFinalPassRenderer {
             () -> "stereoscopic-final-scratch",
             // USAGE_COPY_DST | USAGE_COPY_SRC | USAGE_TEXTURE_BINDING | USAGE_RENDER_ATTACHMENT
             1 | 2 | 4 | 8,
-            TextureFormat.RGBA8,
+            GpuFormat.RGBA8_UNORM,
             w, h, 1, 1);
         stereoscopic$scratchView = RenderSystem.getDevice().createTextureView(stereoscopic$scratchTex);
         stereoscopic$scratchW = w;
@@ -111,16 +112,20 @@ public abstract class MixinFinalPassRenderer {
         return 0;
     }
 
+    // MC 26.2: createRenderPass's clear-color param changed OptionalInt ->
+    // Optional<Vector4fc>. A stale descriptor here fails @At validation and
+    // silently disables EVERY injector in this class (see
+    // feedback_mixin_validation_kills_all_injects).
     @WrapOperation(
         method = "renderFinalPass",
         at = @At(value = "INVOKE",
-                 target = "Lcom/mojang/blaze3d/systems/CommandEncoder;createRenderPass(Ljava/util/function/Supplier;Lcom/mojang/blaze3d/textures/GpuTextureView;Ljava/util/OptionalInt;)Lcom/mojang/blaze3d/systems/RenderPass;",
+                 target = "Lcom/mojang/blaze3d/systems/CommandEncoder;createRenderPass(Ljava/util/function/Supplier;Lcom/mojang/blaze3d/textures/GpuTextureView;Ljava/util/Optional;)Lcom/mojang/blaze3d/systems/RenderPass;",
                  remap = false)
     )
     private RenderPass stereoscopic$substituteRenderPassView(CommandEncoder receiver,
                                                               Supplier<String> nameSupplier,
                                                               GpuTextureView view,
-                                                              OptionalInt clearColor,
+                                                              Optional<Vector4fc> clearColor,
                                                               Operation<RenderPass> original) {
         if (!stereoscopic$eyeActive()) {
             return original.call(receiver, nameSupplier, view, clearColor);
@@ -139,7 +144,9 @@ public abstract class MixinFinalPassRenderer {
         stereoscopic$pendingBlit = false;
         if (!stereoscopic$eyeActive()) return;
         StereoState s = StereoState.INSTANCE;
-        RenderTarget destFb = Minecraft.getInstance().getMainRenderTarget();
+        // Goes through GameRenderer.mainRenderTarget() so the outer-scratch
+        // substitution (MixinGameRenderer HEAD inject) still applies here.
+        RenderTarget destFb = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         if (destFb == null || destFb.getColorTexture() == null) return;
         int destTexId = stereoscopic$extractGlId(destFb.getColorTexture());
         if (destTexId == 0 || stereoscopic$scratchFbo == 0) return;

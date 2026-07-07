@@ -12,21 +12,21 @@ import org.spongepowered.asm.mixin.injection.At;
  * double-buffered chain (cursor thread's GDI {@code SwapBuffers(mainHdc)}
  * + MC's {@code glfwSwapBuffers}) flip front/back/front/back in alternation;
  * MC's swap immediately presents the other backbuffer (which nothing wrote
- * to since we also cancel {@code RenderTarget.blitToScreen}), producing the
- * fresh/stale/fresh/stale flicker the user sees.
+ * to since we also cancel the swapchain blit in {@link MixinMinecraftClient}),
+ * producing fresh/stale/fresh/stale flicker.
  *
- * <p>MC 26.x moved window presentation out of {@code RenderSystem.flipFrame}
- * and into the GPU device: {@code GpuDevice.presentFrame()}, implemented by
- * the (package-private) {@code GlDevice}, is what calls {@code glfwSwapBuffers}
- * now. Only the swap is skipped; the rest of {@code presentFrame} (vsync etc.)
- * still runs. When the cursor thread isn't running (mono, non-Windows, setup
- * failure), the wrapper passes through.
+ * <p>MC 26.2 moved presentation from {@code GlDevice.presentFrame()} into the
+ * surface abstraction: {@code GpuSurface.present()}, implemented by the
+ * (package-private) {@code GlSurface}, whose body is exactly the
+ * {@code glfwSwapBuffers(windowHandle)} call we wrap. When the cursor thread
+ * isn't running (mono, non-Windows, setup failure), the wrapper passes
+ * through.
  */
-@Mixin(targets = "com.mojang.blaze3d.opengl.GlDevice")
-public abstract class MixinGlDevice {
+@Mixin(targets = "com.mojang.blaze3d.opengl.GlSurface")
+public abstract class MixinGlSurface {
 
     @WrapOperation(
-        method = "presentFrame()V",
+        method = "present()V",
         at = @At(value = "INVOKE",
                  target = "Lorg/lwjgl/glfw/GLFW;glfwSwapBuffers(J)V")
     )

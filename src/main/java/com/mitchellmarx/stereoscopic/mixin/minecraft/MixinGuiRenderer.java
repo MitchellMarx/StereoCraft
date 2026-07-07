@@ -55,7 +55,7 @@ public abstract class MixinGuiRenderer {
      * half of one panorama. The cube map's projection rides 26.x's single shared
      * projection UBO, which can't be reliably overridden per-eye, so instead we
      * render the panorama ONCE into the scratch FB (substituted via
-     * {@link MixinMinecraftClient}'s {@code getMainRenderTarget()} redirect) and
+     * {@link MixinGameRenderer}'s {@code mainRenderTarget()} redirect) and
      * then squish the full image into each eye-half with a {@code GL_LINEAR}
      * blit. Both halves get a complete, half-width-squished panorama — identical
      * between eyes, which is correct for a skybox at infinity (zero parallax).
@@ -74,7 +74,7 @@ public abstract class MixinGuiRenderer {
         }
         int fbW = s.getFrameFbW();
         int fbH = s.getFrameFbH();
-        RenderTarget mainFb = Minecraft.getInstance().getMainRenderTarget();
+        RenderTarget mainFb = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         if (mainFb == null || fbW <= 0 || fbH <= 0) {
             original.call(cubeMap, spin, alpha);
             return;
@@ -82,7 +82,7 @@ public abstract class MixinGuiRenderer {
         TextureTarget scratch = PerEyeRenderer.ensureScratchFb(fbW, fbH);
         PerEyeRenderer.setScratchFbActive(true);
         try {
-            // Renders the full mono panorama into the scratch FB (getMainRenderTarget redirect).
+            // Renders the full mono panorama into the scratch FB (mainRenderTarget redirect).
             original.call(cubeMap, spin, alpha);
         } finally {
             PerEyeRenderer.setScratchFbActive(false);
@@ -144,7 +144,15 @@ public abstract class MixinGuiRenderer {
         }
 
         Matrix4f m = new Matrix4f(original);
-        if (leftHalf) {
+        if (s.getFrameMode().isFull()) {
+            // SBS_FULL: MixinWindow halves the GUI *layout* width, so content
+            // laid out for [0..guiW/2] drawn UNcompressed at the (unchanged)
+            // full-width ortho lands exactly in one half at 1:1 — no 0.5
+            // squeeze. Only the right eye needs the half-window offset.
+            if (!leftHalf) {
+                m.translate(guiW * 0.5f, 0f, 0f);
+            }
+        } else if (leftHalf) {
             m.scale(0.5f, 1f, 1f);
         } else {
             m.translate(guiW * 0.5f, 0f, 0f).scale(0.5f, 1f, 1f);

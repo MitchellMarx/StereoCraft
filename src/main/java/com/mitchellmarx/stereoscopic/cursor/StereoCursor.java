@@ -63,7 +63,7 @@ public final class StereoCursor {
         }
 
         Minecraft mc = Minecraft.getInstance();
-        boolean screenOpen = mc != null && mc.screen != null;
+        boolean screenOpen = mc != null && mc.gui.screen() != null;
         boolean gameplayFocus = mc != null && mc.mouseHandler != null && mc.mouseHandler.isMouseGrabbed();
 
         // Overlay only when stereo + screen open. In gameplay, vanilla
@@ -114,7 +114,7 @@ public final class StereoCursor {
         // MC's own setScreen(null) → mouse.lockCursor() ran during input
         // processing before our tick, so the mode we restore to matches.
         // Hard-coding NORMAL would clobber MC's correct DISABLED setting.
-        int mode = (mc.screen == null)
+        int mode = (mc.gui.screen() == null)
             ? GLFW.GLFW_CURSOR_DISABLED
             : GLFW.GLFW_CURSOR_NORMAL;
         try {

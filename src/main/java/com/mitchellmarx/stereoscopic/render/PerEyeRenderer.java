@@ -7,6 +7,7 @@ import com.mitchellmarx.stereoscopic.core.StereoState;
 // no RenderSystem.viewport(IIII) wrapper. GlStateManager lives in
 // com.mojang.blaze3d.opengl.
 import com.mitchellmarx.stereoscopic.Stereoscopic;
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -40,7 +41,9 @@ public final class PerEyeRenderer {
             catch (Throwable t) { Stereoscopic.LOG.warn("Scratch FB delete failed during resize; GPU FB leaked", t); }
             scratchFb = null;
         }
-        scratchFb = new TextureTarget("stereoscopic-world-scratch", w, h, true);
+        // 26.2: TextureTarget now takes an explicit GpuFormat; RGBA8_UNORM
+        // matches the vanilla main target's color format.
+        scratchFb = new TextureTarget("stereoscopic-world-scratch", w, h, true, GpuFormat.RGBA8_UNORM);
         scratchFbW = w;
         scratchFbH = h;
         return scratchFb;

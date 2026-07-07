@@ -1,8 +1,7 @@
 plugins {
-    // MC 26.1 is unobfuscated: use the non-remapping Loom line (1.16-SNAPSHOT),
-    // matching FabricMC/fabric-example-mod @ 26.1.2. The old fabric-loom /
-    // 1.17.0-alpha line still expects (now non-existent) Mojang mappings.
-    id("net.fabricmc.fabric-loom") version "1.16-SNAPSHOT"
+    // MC 26.x is unobfuscated: use the non-remapping Loom line, matching
+    // FabricMC/fabric-example-mod @ 26.2.
+    id("net.fabricmc.fabric-loom") version "1.17-SNAPSHOT"
     `java-library`
     `maven-publish`
 }
@@ -77,7 +76,7 @@ tasks.test { useJUnitPlatform() }
 // No remapJar in the unobfuscated build: the plain `jar` is the final mod jar.
 val testInstanceMods = file(
     (project.findProperty("stereoscopic.deployDir") as String?)
-        ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.1.2/mods"
+        ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.2/mods"
 )
 
 val copyToTestInstance by tasks.registering(Copy::class) {

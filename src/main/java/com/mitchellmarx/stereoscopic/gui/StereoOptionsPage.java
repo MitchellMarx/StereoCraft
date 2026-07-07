@@ -96,6 +96,13 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
         if (StereoOptions.INSTANCE.mode == v) return;
         StereoOptions.INSTANCE.mode = v;
         PerEyeRenderTargetHooks.rebuildPipelineForStereoToggle();
+        // SBS_FULL halves the GUI layout width (MixinWindow); open screens
+        // cache their dimensions at init, so re-layout them for the new mode.
+        try {
+            net.minecraft.client.Minecraft.getInstance().resizeGui();
+        } catch (Throwable t) {
+            Stereoscopic.LOG.warn("resizeGui after stereo mode change failed", t);
+        }
     }
 
     private static float clampedMetersFromMm(int mm) {
@@ -111,6 +118,7 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
         return switch (m) {
             case OFF      -> Component.translatable("stereoscopic.options.mode.off");
             case SBS_HALF -> Component.translatable("stereoscopic.options.mode.sbs_half");
+            case SBS_FULL -> Component.translatable("stereoscopic.options.mode.sbs_full");
         };
     }
 }

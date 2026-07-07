@@ -2,6 +2,7 @@ package com.mitchellmarx.stereoscopic.render;
 
 import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mitchellmarx.stereoscopic.core.StereoState;
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
@@ -47,7 +48,7 @@ public final class StereoBlur {
         if (eyeW <= 0 || eyeH <= 0) return;
 
         Minecraft client = Minecraft.getInstance();
-        RenderTarget mainFB = client.getMainRenderTarget();
+        RenderTarget mainFB = client.gameRenderer.mainRenderTarget();
         if (mainFB == null) return;
 
         if (eyeX < 0 || eyeY < 0
@@ -88,7 +89,7 @@ public final class StereoBlur {
     private static boolean ensureBlurFB(int w, int h) {
         if (currentW == w && currentH == h && blurFB != null) return true;
         if (blurFB != null) { blurFB.destroyBuffers(); blurFB = null; }
-        TextureTarget fb = new TextureTarget("stereoscopic-blur", w, h, true);
+        TextureTarget fb = new TextureTarget("stereoscopic-blur", w, h, true, GpuFormat.RGBA8_UNORM);
         // RenderTarget has no checkFramebufferStatus(); the closest
         // post-construction sanity check is verifying the GpuTexture attachments
         // were created. createTexture throws on allocation failure, so this

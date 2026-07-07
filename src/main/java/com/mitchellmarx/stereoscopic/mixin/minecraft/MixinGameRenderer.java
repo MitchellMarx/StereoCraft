@@ -29,15 +29,34 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(GameRenderer.class)
 public abstract class MixinGameRenderer {
 
     @Shadow @Final private Minecraft minecraft;
 
-    @Shadow public abstract net.minecraft.client.renderer.state.GameRenderState getGameRenderState();
+    // 26.2 renames: getGameRenderState() -> gameRenderState(),
+    // getMainCamera() -> mainCamera().
+    @Shadow public abstract net.minecraft.client.renderer.state.GameRenderState gameRenderState();
 
-    @Shadow public abstract Camera getMainCamera();
+    @Shadow public abstract Camera mainCamera();
+
+    /**
+     * Per-eye world-FB substitution. MC 26.2 moved the main render target from
+     * {@code Minecraft.getMainRenderTarget()} to {@code GameRenderer.mainRenderTarget()}
+     * (private field, so every external caller — including lambda-synthetics
+     * inside the framegraph passes — goes through this accessor). Intercepting
+     * the accessor HEAD keeps the old "every caller sees the scratch FB while
+     * the eye pass runs" semantics from the 26.1.2 MixinMinecraftClient inject.
+     */
+    @Inject(method = "mainRenderTarget()Lcom/mojang/blaze3d/pipeline/RenderTarget;", at = @At("HEAD"), cancellable = true)
+    private void stereoscopic$redirectToScratch(CallbackInfoReturnable<RenderTarget> cir) {
+        if (!PerEyeRenderer.isScratchFbActive()) return;
+        RenderTarget scratch = PerEyeRenderer.getScratchFb();
+        if (scratch == null) return;
+        cir.setReturnValue(scratch);
+    }
 
     /** True once we've forced Iris's pipeline to rebuild after first stereo activation. */
     private static boolean stereoscopic$irisRebuiltForStereo = false;
@@ -81,9 +100,9 @@ public abstract class MixinGameRenderer {
      * mutate {@code cameraRenderState.pos} (eye offset) and
      * {@code cameraRenderState.projectionMatrix} (convergence shear) — both the
      * GPU projection UBO upload and the Matrix4fc handed to LevelRenderer read
-     * from that state. Renders into a full-FB scratch FB (substituted via
-     * {@link MixinMinecraftClient}'s {@code getMainRenderTarget()} HEAD inject),
-     * then blits scratch -> MC main FB at the eye rect with {@code GL_LINEAR}.
+     * from that state. Renders into a full-FB scratch FB (substituted via the
+     * {@code mainRenderTarget()} HEAD inject above), then blits scratch -> MC
+     * main FB at the eye rect with {@code GL_LINEAR}.
      */
     @WrapOperation(
         method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
@@ -98,8 +117,8 @@ public abstract class MixinGameRenderer {
             original.call(self, deltaTracker);
             return;
         }
-        CameraRenderState crs = getGameRenderState().levelRenderState.cameraRenderState;
-        Camera camera = getMainCamera();
+        CameraRenderState crs = gameRenderState().levelRenderState.cameraRenderState;
+        Camera camera = mainCamera();
         Vec3 basePos = crs.pos;
         Matrix4f baseProj = new Matrix4f(crs.projectionMatrix);
         // Mono pos cached so shared passes (Iris shadow render, Sodium chunk
@@ -109,13 +128,15 @@ public abstract class MixinGameRenderer {
         try {
             // Null-FB guard hoisted OUTSIDE the per-eye lambda: if checked
             // inside, a transient null would double-invoke original.call.
-            RenderTarget outerCheckFb = this.minecraft.getMainRenderTarget();
+            // Scratch is not active at this point, so the accessor (with our
+            // HEAD inject above) still returns the real main FB.
+            RenderTarget outerCheckFb = ((GameRenderer) (Object) this).mainRenderTarget();
             if (outerCheckFb == null || outerCheckFb.getColorTexture() == null) {
                 original.call(self, deltaTracker);
                 return;
             }
             PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.WORLD, () -> {
-                RenderTarget realMainFb = this.minecraft.getMainRenderTarget();
+                RenderTarget realMainFb = ((GameRenderer) (Object) this).mainRenderTarget();
                 int w = realMainFb.width;
                 int h = realMainFb.height;
                 TextureTarget scratch = PerEyeRenderer.ensureScratchFb(w, h);
@@ -129,8 +150,14 @@ public abstract class MixinGameRenderer {
                 crs.pos = basePos.add(-left.x() * dx, -left.y() * dx, -left.z() * dx);
                 // Off-axis convergence shear on a fresh copy of the mono
                 // projection (applyConvergenceShear mutates in place).
+                // SBS_FULL first halves the aspect to (W/2)/H — order matters,
+                // the shear reads m00 (see StereoMath.applyFullSbsAspect).
+                Matrix4f eyeProj = new Matrix4f(baseProj);
+                if (StereoState.INSTANCE.getFrameMode().isFull()) {
+                    StereoMath.applyFullSbsAspect(eyeProj);
+                }
                 crs.projectionMatrix = StereoMath.applyConvergenceShear(
-                    new Matrix4f(baseProj), dx, StereoState.INSTANCE.getFrameConvergence());
+                    eyeProj, dx, StereoState.INSTANCE.getFrameConvergence());
 
                 PerEyeRenderer.setScratchFbActive(true);
                 try {

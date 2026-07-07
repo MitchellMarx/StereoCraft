@@ -40,7 +40,8 @@ public final class PerEyeRenderTargetHooks {
         if (mc.level == null) return;
         try {
             irisReloadPipeline();
-            if (mc.levelRenderer != null) mc.levelRenderer.allChanged();
+            // 26.2: allChanged() moved from LevelRenderer to LevelExtractor.
+            if (mc.levelExtractor != null) mc.levelExtractor.allChanged();
         } catch (Throwable t) {
             Stereoscopic.LOG.error("Iris pipeline rebuild on stereo toggle failed", t);
         }

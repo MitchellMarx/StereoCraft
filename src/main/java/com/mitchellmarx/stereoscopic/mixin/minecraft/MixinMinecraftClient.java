@@ -1,54 +1,61 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
-import com.mitchellmarx.stereoscopic.core.StereoOptions;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.mitchellmarx.stereoscopic.cursor.CursorPresentThread;
 import com.mitchellmarx.stereoscopic.cursor.StereoCursor;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
 import com.mitchellmarx.stereoscopic.render.StereoBlur;
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.platform.Window;
+import com.mojang.blaze3d.systems.CommandEncoder;
+import com.mojang.blaze3d.systems.GpuSurface;
+import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.MouseHandler;
-import net.minecraft.client.gui.screens.Screen;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Minecraft.class)
 public abstract class MixinMinecraftClient {
 
-    @Shadow @Final public MouseHandler mouseHandler;
-    @Shadow @Final private Window window;
+    // MC 26.2: setScreen moved to net.minecraft.client.gui.Gui (see MixinGui,
+    // which now hosts the virtual-cursor seeding) and getMainRenderTarget()
+    // moved to GameRenderer.mainRenderTarget() (scratch-FB substitution now
+    // lives in MixinGameRenderer).
 
     /**
-     * Seed mouse at the LEFT-half center when opening a Screen in SBS_HALF.
-     * The geometric window center sits on the L/R seam — cursor would split
-     * between eyes. {@code (width/4, height/2)} puts it at left-half center;
-     * the per-eye HUD compression renders it cleanly in both eye views.
+     * Route MC's per-frame swapchain blit through the async cursor present
+     * thread when it's running. Two threads racing for the same window would
+     * interleave swaps; instead, MC's present is starved (blit skipped here,
+     * swap skipped in {@link MixinGlSurface}) and the cursor thread captures
+     * the main FB into a shared texture, renders the cursor overlay, and
+     * {@code SwapBuffers} itself on its own GL context bound to the same
+     * window.
+     *
+     * <p>26.2 replaced {@code RenderTarget.blitToScreen()} (the 26.1.2 hook,
+     * {@code MixinFramebuffer}) with a swapchain model: {@code
+     * Minecraft.renderFrame} does {@code GpuSurface.acquireNextTexture()} →
+     * {@code blitFromTexture(encoder, mainTargetView)} → {@code present()}.
+     * The blit is the analogous capture point — same timing (frame complete,
+     * pre-present).
+     *
+     * <p>No-op when {@link CursorPresentThread#isRunning()} is false (mono,
+     * non-Windows, setup failure).
      */
-    @Inject(method = "setScreen(Lnet/minecraft/client/gui/screens/Screen;)V", at = @At("RETURN"))
-    private void stereoscopic$seedVirtualCursor(Screen screen, CallbackInfo ci) {
-        if (screen == null) return;
-        if (!StereoOptions.INSTANCE.mode.isActive()) return;
-        MouseAccessor accessor = (MouseAccessor) (Object) this.mouseHandler;
-        accessor.stereoscopic$setX(window.getScreenWidth() / 4.0);
-        accessor.stereoscopic$setY(window.getScreenHeight() / 2.0);
-    }
-
-    /**
-     * Per-eye world-FB substitution. Intercepts every caller — including
-     * lambda-synthetics inside {@code WorldRenderer.render}'s framegraph
-     * passes that a method-scoped {@code @Redirect} would miss.
-     */
-    @Inject(method = "getMainRenderTarget()Lcom/mojang/blaze3d/pipeline/RenderTarget;", at = @At("HEAD"), cancellable = true)
-    private void stereoscopic$redirectToScratch(CallbackInfoReturnable<RenderTarget> cir) {
-        if (!PerEyeRenderer.isScratchFbActive()) return;
-        RenderTarget scratch = PerEyeRenderer.getScratchFb();
-        if (scratch == null) return;
-        cir.setReturnValue(scratch);
+    @WrapOperation(
+        method = "renderFrame(Z)V",
+        at = @At(value = "INVOKE",
+                 target = "Lcom/mojang/blaze3d/systems/GpuSurface;blitFromTexture(Lcom/mojang/blaze3d/systems/CommandEncoder;Lcom/mojang/blaze3d/textures/GpuTextureView;)V")
+    )
+    private void stereoscopic$routePresentThroughCursorThread(GpuSurface surface,
+                                                              CommandEncoder encoder,
+                                                              GpuTextureView view,
+                                                              Operation<Void> original) {
+        if (!CursorPresentThread.isRunning()) {
+            original.call(surface, encoder, view);
+            return;
+        }
+        CursorPresentThread.publishFrame();
     }
 
     /**

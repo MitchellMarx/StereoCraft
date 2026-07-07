@@ -58,4 +58,21 @@ public final class StereoMath {
         if (shear == 0f) return proj;
         return proj.mul(new Matrix4f().m20(shear));
     }
+
+    /**
+     * Mutates {@code proj} in place for SBS_FULL: halves the projection's
+     * aspect ratio from the vanilla full-window {@code W/H} to the per-eye
+     * {@code (W/2)/H} by doubling {@code m00} ({@code m00 = f/aspect} for a
+     * symmetric perspective — vertical FOV is untouched). The per-eye render
+     * is still squeezed 2:1 into its half of the window, so each half carries
+     * a proportionally correct full-aspect image with no display stretch.
+     *
+     * <p>Must be applied BEFORE {@link #applyConvergenceShear} — the shear
+     * post-multiply reads the current {@code m00} ({@code P[0][2] = P[0][0] *
+     * shear}), and convergence geometry has to match the frustum actually
+     * rendered.
+     */
+    public static Matrix4f applyFullSbsAspect(Matrix4f proj) {
+        return proj.m00(proj.m00() * 2f);
+    }
 }

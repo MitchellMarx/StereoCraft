@@ -4,13 +4,12 @@ import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks;
 import com.mitchellmarx.stereoscopic.compat.voxy.VoxyEyeRebindHooks;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.TextureFormat;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
 import net.irisshaders.iris.gl.texture.DepthBufferFormat;
-import net.irisshaders.iris.platform.IrisPlatformHelpers;
 import net.irisshaders.iris.shaderpack.properties.PackDirectives;
 import net.irisshaders.iris.shaderpack.properties.PackRenderTargetDirectives;
 import net.irisshaders.iris.targets.RenderTarget;
@@ -140,7 +139,9 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
 
     @Unique
     private GpuTexture stereoscopic$createDepthSibling(String name) {
-        TextureFormat fmt = IrisPlatformHelpers.getInstance().mojangDepthFormat(currentDepthFormat);
+        // Iris 1.11: DepthBufferFormat converts itself (mojangDepthFormat was
+        // dropped from IrisPlatformHelpers).
+        GpuFormat fmt = currentDepthFormat.toMojang();
         // Match Iris's constructor: usage=5, mipLevels=1, layers=1.
         return RenderSystem.getDevice().createTexture(name, 5, fmt, cachedWidth, cachedHeight, 1, 1);
     }

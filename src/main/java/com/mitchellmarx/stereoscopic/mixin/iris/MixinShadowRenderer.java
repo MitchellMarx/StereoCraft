@@ -40,7 +40,7 @@ public abstract class MixinShadowRenderer {
         if (!StereoState.INSTANCE.isActive()) return;
         Vec3 monoPos = StereoState.INSTANCE.getFrameMonoCameraPos();
         if (monoPos == null) return;
-        Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
         stereoscopic$savedEyePos = camera.position();
         ((CameraAccessor)(Object)camera).stereoscopic$setPos(monoPos);
     }
@@ -48,7 +48,7 @@ public abstract class MixinShadowRenderer {
     @Inject(method = "renderShadows", at = @At("RETURN"))
     private void stereoscopic$restoreEyePosAfterShadows(CallbackInfo ci) {
         if (stereoscopic$savedEyePos == null) return;
-        Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
         ((CameraAccessor)(Object)camera).stereoscopic$setPos(stereoscopic$savedEyePos);
         stereoscopic$savedEyePos = null;
     }
