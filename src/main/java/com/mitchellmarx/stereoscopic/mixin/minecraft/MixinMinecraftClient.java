@@ -11,6 +11,7 @@ import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -24,24 +25,53 @@ public abstract class MixinMinecraftClient {
     // lives in MixinGameRenderer).
 
     /**
-     * Route MC's per-frame swapchain blit through the async cursor present
-     * thread when it's running. Two threads racing for the same window would
-     * interleave swaps; instead, MC's present is starved (blit skipped here,
-     * swap skipped in {@link MixinGlSurface}) and the cursor thread captures
-     * the main FB into a shared texture, renders the cursor overlay, and
-     * {@code SwapBuffers} itself on its own GL context bound to the same
-     * window.
+     * Route MC's per-frame window presentation through the async cursor
+     * present thread when it's running. Two threads racing for the same
+     * window would interleave swaps; instead MC's whole surface sequence is
+     * skipped and the cursor thread captures the main FB into a shared
+     * texture, renders the cursor overlay, and {@code SwapBuffers} itself on
+     * its own GL context bound to the same window.
      *
      * <p>26.2 replaced {@code RenderTarget.blitToScreen()} (the 26.1.2 hook,
-     * {@code MixinFramebuffer}) with a swapchain model: {@code
-     * Minecraft.renderFrame} does {@code GpuSurface.acquireNextTexture()} →
-     * {@code blitFromTexture(encoder, mainTargetView)} → {@code present()}.
-     * The blit is the analogous capture point — same timing (frame complete,
-     * pre-present).
+     * {@code MixinFramebuffer}) with a validated swapchain state machine:
+     * {@code Minecraft.renderFrame} does {@code GpuSurface.acquireNextTexture()}
+     * → {@code blitFromTexture(encoder, mainTargetView)} → {@code present()},
+     * and each step throws unless the previous one ran ("Must blit to surface
+     * before presenting!" when only the blit is cancelled). So unlike 26.1.2,
+     * ALL THREE calls must be skipped together — the surface then stays
+     * consistently un-acquired and MC never touches the window while the
+     * cursor thread owns it. The blit is the analogous capture point — same
+     * timing (frame complete, pre-present) — so publishFrame() fires there.
+     * {@link MixinGlSurface} still suppresses the backend swap as
+     * defense-in-depth for any other {@code present()} path.
      *
-     * <p>No-op when {@link CursorPresentThread#isRunning()} is false (mono,
-     * non-Windows, setup failure).
+     * <p>The skip decision is made ONCE per frame at acquire time and cached
+     * in {@code stereoscopic$surfaceSkippedThisFrame}: the cursor thread is
+     * started/stopped by StereoCursor.tick, which runs INSIDE renderFrame
+     * (GameRenderer.render HEAD) — i.e. between the acquire and the
+     * blit/present — so three independent isRunning() reads could disagree
+     * mid-frame and strand the state machine (acquired-but-never-presented →
+     * "Cannot acquire a surface while it is already acquired" next frame).
+     * With the cached flag, a transition frame completes whichever protocol
+     * it started ({@link MixinGlSurface} keeps the real swap suppressed
+     * either way once the thread is up).
      */
+    @Unique
+    private boolean stereoscopic$surfaceSkippedThisFrame;
+
+    @WrapOperation(
+        method = "renderFrame(Z)V",
+        at = @At(value = "INVOKE",
+                 target = "Lcom/mojang/blaze3d/systems/GpuSurface;acquireNextTexture()V")
+    )
+    private void stereoscopic$skipAcquireWhenCursorThreadOwnsPresent(GpuSurface surface,
+                                                                     Operation<Void> original) {
+        stereoscopic$surfaceSkippedThisFrame = CursorPresentThread.isRunning();
+        if (!stereoscopic$surfaceSkippedThisFrame) {
+            original.call(surface);
+        }
+    }
+
     @WrapOperation(
         method = "renderFrame(Z)V",
         at = @At(value = "INVOKE",
@@ -51,11 +81,23 @@ public abstract class MixinMinecraftClient {
                                                               CommandEncoder encoder,
                                                               GpuTextureView view,
                                                               Operation<Void> original) {
-        if (!CursorPresentThread.isRunning()) {
+        if (!stereoscopic$surfaceSkippedThisFrame) {
             original.call(surface, encoder, view);
             return;
         }
         CursorPresentThread.publishFrame();
+    }
+
+    @WrapOperation(
+        method = "renderFrame(Z)V",
+        at = @At(value = "INVOKE",
+                 target = "Lcom/mojang/blaze3d/systems/GpuSurface;present()V")
+    )
+    private void stereoscopic$skipPresentWhenCursorThreadOwnsPresent(GpuSurface surface,
+                                                                     Operation<Void> original) {
+        if (!stereoscopic$surfaceSkippedThisFrame) {
+            original.call(surface);
+        }
     }
 
     /**
