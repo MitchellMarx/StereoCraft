@@ -76,7 +76,9 @@ tasks.test { useJUnitPlatform() }
 // No remapJar in the unobfuscated build: the plain `jar` is the final mod jar.
 val testInstanceMods = file(
     (project.findProperty("stereoscopic.deployDir") as String?)
-        ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.2/mods"
+        // Profile is still NAMED "Fabric 26.1.2" but was upgraded in place to
+        // MC 26.2 (disk-space constraint — no separate 26.2 profile).
+        ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.1.2/mods"
 )
 
 val copyToTestInstance by tasks.registering(Copy::class) {
