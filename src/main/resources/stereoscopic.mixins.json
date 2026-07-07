@@ -4,6 +4,7 @@
   "package": "com.mitchellmarx.stereoscopic.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "minecraft.MixinCubeMap",
     "minecraft.MixinGameRenderer",
     "minecraft.MixinGui",
     "minecraft.MixinGlCommandEncoder",
