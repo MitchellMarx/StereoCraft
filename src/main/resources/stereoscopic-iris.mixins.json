@@ -9,6 +9,7 @@
     "MixinCameraUniforms",
     "MixinMatrixUniforms",
     "MixinDHCompat",
+    "MixinDHCompatInternal",
     "MixinIrisLodRenderProgram",
     "MixinFinalPassRenderer",
     "MixinIrisRenderingPipeline",
