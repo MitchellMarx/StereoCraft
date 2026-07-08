@@ -338,6 +338,8 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             int incomingGl = stereoscopic$glId(newDepthTextureId);
             int currentGl = stereoscopic$glId(currentDepthTexture);
             if (incomingGl != 0 && incomingGl != currentGl) {
+                Stereoscopic.LOG.info("[stereo] main-depth identity change: glId {} -> {} (forcing Iris depth rebind)",
+                    currentGl, incomingGl);
                 cachedDepthBufferVersion = newDepthBufferVersion ^ 0x7FFFFFFF;
             }
         } catch (Throwable t) {

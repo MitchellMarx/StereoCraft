@@ -45,11 +45,17 @@ public abstract class MixinDHCompatInternal {
     @Unique private int stereoscopic$lastDepthTexW = -1;
     @Unique private int stereoscopic$lastDepthTexH = -1;
 
+    @Shadow private int storedDepthTex;
+
     @Inject(method = "reconnectDHTextures", at = @At("HEAD"))
     private void stereoscopic$forceDepthTexRecreateOnResize(int depthTex, CallbackInfo ci) {
         RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         if (target == null) return;
         if (target.width != stereoscopic$lastDepthTexW || target.height != stereoscopic$lastDepthTexH) {
+            com.mitchellmarx.stereoscopic.Stereoscopic.LOG.info(
+                "[stereo-dh] reconnect: dims {}x{} -> {}x{}, incoming dhDepthTex={}, storedDepthTex={}, cachedVersion={} (poisoning)",
+                stereoscopic$lastDepthTexW, stereoscopic$lastDepthTexH,
+                target.width, target.height, depthTex, storedDepthTex, cachedVersion);
             stereoscopic$lastDepthTexW = target.width;
             stereoscopic$lastDepthTexH = target.height;
             // Any value the live counters can't equal; the body then takes the
