@@ -50,23 +50,41 @@ public final class PerEyeRenderTargetHooks {
     private static int resizeLastH = -1;
     private static int recheckCountdown = -1;
 
+    /**
+     * Bumped on every framebuffer-dims change while stereo is active.
+     * {@code MixinProgramUniforms} watches it and replays each program's
+     * ONCE-frequency uniform tier (Iris uploads that tier at first update()
+     * only — its values freeze at program-creation state, which is how the
+     * DH LOD programs kept pre-resize viewWidth/viewHeight and friends).
+     */
+    private static volatile int resizeGeneration;
+
+    public static int getResizeGeneration() {
+        return resizeGeneration;
+    }
+
     /** Called once per frame from MixinGameRenderer's beginFrame HEAD. */
     public static void tickResizeWatch(int fbW, int fbH) {
-        if (!IRIS_PRESENT || !DH_PRESENT) return;
+        if (!IRIS_PRESENT) return;
         if (fbW <= 0 || fbH <= 0) return;
         boolean changed = (fbW != resizeLastW || fbH != resizeLastH) && resizeLastW != -1;
         resizeLastW = fbW;
         resizeLastH = fbH;
         if (changed && com.mitchellmarx.stereoscopic.core.StereoOptions.INSTANCE.mode.isActive()) {
-            try {
-                irisRefreshDhViewportUniforms(fbW, fbH, "resize");
-                recheckCountdown = 120; // re-read ~2s later to catch overwrites
-            } catch (Throwable t) {
-                Stereoscopic.LOG.warn("[stereo] DH viewport-uniform refresh after resize failed", t);
+            resizeGeneration++;
+            Stereoscopic.LOG.info("[stereo] resize {}x{}: ONCE-uniform replay armed (generation {})",
+                fbW, fbH, resizeGeneration);
+            if (DH_PRESENT) {
+                try {
+                    irisRefreshDhViewportUniforms(fbW, fbH, "resize");
+                    recheckCountdown = 120; // re-read ~2s later to catch overwrites
+                } catch (Throwable t) {
+                    Stereoscopic.LOG.warn("[stereo] DH viewport-uniform refresh after resize failed", t);
+                }
             }
             return;
         }
-        if (recheckCountdown > 0 && --recheckCountdown == 0) {
+        if (DH_PRESENT && recheckCountdown > 0 && --recheckCountdown == 0) {
             try {
                 irisRefreshDhViewportUniforms(fbW, fbH, "recheck");
             } catch (Throwable t) {
