@@ -28,72 +28,78 @@ public final class PerEyeRenderTargetHooks {
         return StereoState.INSTANCE.currentEyeIndex();
     }
 
-    // --- Post-resize Iris pipeline rebuild (debounced) ---
+    // --- Post-resize DH program uniform refresh ---
     //
     // A window resize leaves DH's Iris-side render programs with stale
-    // program-lifetime state (observed: dh_terrain's viewWidth/viewHeight
-    // stay at the pre-resize values, so its LOD distance-discard reconstructs
-    // huge view distances and LOD terrain overdraws vanilla terrain; the
-    // pack-side binding of those uniforms is not reachable through any
-    // per-frame Iris uniform holder we can retarget). The user-verified
-    // mitigation is toggling DH, which forces a pipeline rebuild. Automate
-    // exactly that: after framebuffer dims change and stay stable for
-    // REBUILD_STABLE_FRAMES (debounce — dragging a window edge fires resizes
-    // continuously), destroy the pipeline via Iris's own dimension-change
-    // path (PipelineManager.destroyPipeline; it lazily recreates next frame,
-    // and the log-proven flow rebuilds our per-eye bank + DH programs
-    // cleanly). Only armed while stereo is active AND a pipeline exists —
-    // with stereo off our redirect is inert and vanilla behavior applies.
+    // program-lifetime uniforms: dh_terrain's viewWidth/viewHeight keep the
+    // pre-resize values (no per-frame Iris uniform holder reaches them — the
+    // DH programs only register fog/custom/builtin-replacement holders), so
+    // the LOD distance-discard reconstructs huge view distances and LOD
+    // terrain overdraws vanilla terrain. Rebuilding the whole pipeline fixes
+    // it (that's what a DH toggle does) but costs a multi-second shader
+    // recompile hang. Instead, surgically re-upload viewWidth / viewHeight /
+    // aspectRatio on the DH programs the moment the framebuffer dims change —
+    // a couple of glUniform1f calls, no hitch, no delay. Gated on stereo
+    // being active (with stereo off the mod's target substitution is inert
+    // and vanilla/Iris behavior applies).
 
-    private static final int REBUILD_STABLE_FRAMES = 40;
+    private static final boolean DH_PRESENT =
+        FabricLoader.getInstance().isModLoaded("distanthorizons");
+
     private static int resizeLastW = -1;
     private static int resizeLastH = -1;
-    private static int resizeStableFrames;
-    private static boolean resizeRebuildPending;
 
     /** Called once per frame from MixinGameRenderer's beginFrame HEAD. */
     public static void tickResizeWatch(int fbW, int fbH) {
-        if (!IRIS_PRESENT) return;
+        if (!IRIS_PRESENT || !DH_PRESENT) return;
         if (fbW <= 0 || fbH <= 0) return;
-        if (resizeLastW == -1) {
-            resizeLastW = fbW;
-            resizeLastH = fbH;
-            return;
-        }
-        if (fbW != resizeLastW || fbH != resizeLastH) {
-            resizeLastW = fbW;
-            resizeLastH = fbH;
-            resizeStableFrames = 0;
-            resizeRebuildPending =
-                com.mitchellmarx.stereoscopic.core.StereoOptions.INSTANCE.mode.isActive()
-                    && irisPipelineActive();
-            return;
-        }
-        if (resizeRebuildPending && ++resizeStableFrames >= REBUILD_STABLE_FRAMES) {
-            resizeRebuildPending = false;
-            try {
-                Stereoscopic.LOG.info(
-                    "[stereo] window resized to {}x{} — rebuilding Iris pipeline (refreshes DH programs)", fbW, fbH);
-                irisDestroyPipeline();
-            } catch (Throwable t) {
-                Stereoscopic.LOG.error("Iris pipeline rebuild after resize failed", t);
-            }
-        }
-    }
-
-    private static boolean irisPipelineActive() {
-        if (!IRIS_PRESENT) return false;
+        boolean changed = (fbW != resizeLastW || fbH != resizeLastH) && resizeLastW != -1;
+        resizeLastW = fbW;
+        resizeLastH = fbH;
+        if (!changed) return;
+        if (!com.mitchellmarx.stereoscopic.core.StereoOptions.INSTANCE.mode.isActive()) return;
         try {
-            return net.irisshaders.iris.Iris.getPipelineManager().getPipelineNullable() != null;
+            irisRefreshDhViewportUniforms(fbW, fbH);
         } catch (Throwable t) {
-            return false;
+            Stereoscopic.LOG.warn("[stereo] DH viewport-uniform refresh after resize failed", t);
         }
     }
 
-    private static void irisDestroyPipeline() {
-        // Same flow Iris uses on dimension change: destroy now, lazily
-        // recreated by preparePipeline on the next level render.
-        net.irisshaders.iris.Iris.getPipelineManager().destroyPipeline();
+    private static void irisRefreshDhViewportUniforms(int fbW, int fbH) {
+        net.irisshaders.iris.compat.dh.DHCompatInternal dh =
+            com.mitchellmarx.stereoscopic.mixin.iris.LodRendererEventsInvoker.stereoscopic$getInstance();
+        if (dh == null) return;
+        int refreshed = 0;
+        refreshed += stereoscopic$uploadViewport(dh.getSolidShader(), fbW, fbH);
+        refreshed += stereoscopic$uploadViewport(dh.getTranslucentShader(), fbW, fbH);
+        refreshed += stereoscopic$uploadViewport(dh.getShadowShader(), fbW, fbH);
+        if (refreshed > 0) {
+            Stereoscopic.LOG.info("[stereo] resize {}x{}: refreshed viewport uniforms on {} DH program(s)",
+                fbW, fbH, refreshed);
+        }
+    }
+
+    private static int stereoscopic$uploadViewport(
+            net.irisshaders.iris.compat.dh.IrisLodRenderProgram program, int fbW, int fbH) {
+        if (program == null) return 0;
+        int id = ((com.mitchellmarx.stereoscopic.mixin.iris.IrisLodRenderProgramAccessor) (Object) program)
+            .stereoscopic$getId();
+        if (id == 0) return 0;
+        int prev = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM);
+        try {
+            org.lwjgl.opengl.GL20.glUseProgram(id);
+            stereoscopic$setFloatUniform(id, "viewWidth", fbW);
+            stereoscopic$setFloatUniform(id, "viewHeight", fbH);
+            stereoscopic$setFloatUniform(id, "aspectRatio", (float) fbW / (float) fbH);
+        } finally {
+            org.lwjgl.opengl.GL20.glUseProgram(prev);
+        }
+        return 1;
+    }
+
+    private static void stereoscopic$setFloatUniform(int programId, String name, float value) {
+        int loc = org.lwjgl.opengl.GL20.glGetUniformLocation(programId, name);
+        if (loc >= 0) org.lwjgl.opengl.GL20.glUniform1f(loc, value);
     }
 
     /**

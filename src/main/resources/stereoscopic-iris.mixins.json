@@ -8,6 +8,8 @@
     "MixinRenderTargets",
     "MixinCameraUniforms",
     "MixinMatrixUniforms",
+    "IrisLodRenderProgramAccessor",
+    "LodRendererEventsInvoker",
     "MixinDHCompat",
     "MixinDHCompatInternal",
     "MixinIrisLodRenderProgram",
