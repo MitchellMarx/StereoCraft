@@ -48,6 +48,7 @@ public final class PerEyeRenderTargetHooks {
 
     private static int resizeLastW = -1;
     private static int resizeLastH = -1;
+    private static int recheckCountdown = -1;
 
     /** Called once per frame from MixinGameRenderer's beginFrame HEAD. */
     public static void tickResizeWatch(int fbW, int fbH) {
@@ -56,50 +57,63 @@ public final class PerEyeRenderTargetHooks {
         boolean changed = (fbW != resizeLastW || fbH != resizeLastH) && resizeLastW != -1;
         resizeLastW = fbW;
         resizeLastH = fbH;
-        if (!changed) return;
-        if (!com.mitchellmarx.stereoscopic.core.StereoOptions.INSTANCE.mode.isActive()) return;
-        try {
-            irisRefreshDhViewportUniforms(fbW, fbH);
-        } catch (Throwable t) {
-            Stereoscopic.LOG.warn("[stereo] DH viewport-uniform refresh after resize failed", t);
+        if (changed && com.mitchellmarx.stereoscopic.core.StereoOptions.INSTANCE.mode.isActive()) {
+            try {
+                irisRefreshDhViewportUniforms(fbW, fbH, "resize");
+                recheckCountdown = 120; // re-read ~2s later to catch overwrites
+            } catch (Throwable t) {
+                Stereoscopic.LOG.warn("[stereo] DH viewport-uniform refresh after resize failed", t);
+            }
+            return;
+        }
+        if (recheckCountdown > 0 && --recheckCountdown == 0) {
+            try {
+                irisRefreshDhViewportUniforms(fbW, fbH, "recheck");
+            } catch (Throwable t) {
+                Stereoscopic.LOG.warn("[stereo] DH viewport-uniform recheck failed", t);
+            }
         }
     }
 
-    private static void irisRefreshDhViewportUniforms(int fbW, int fbH) {
+    private static void irisRefreshDhViewportUniforms(int fbW, int fbH, String reason) {
         net.irisshaders.iris.compat.dh.DHCompatInternal dh =
             com.mitchellmarx.stereoscopic.mixin.iris.LodRendererEventsInvoker.stereoscopic$getInstance();
         if (dh == null) return;
-        int refreshed = 0;
-        refreshed += stereoscopic$uploadViewport(dh.getSolidShader(), fbW, fbH);
-        refreshed += stereoscopic$uploadViewport(dh.getTranslucentShader(), fbW, fbH);
-        refreshed += stereoscopic$uploadViewport(dh.getShadowShader(), fbW, fbH);
-        if (refreshed > 0) {
-            Stereoscopic.LOG.info("[stereo] resize {}x{}: refreshed viewport uniforms on {} DH program(s)",
-                fbW, fbH, refreshed);
-        }
+        stereoscopic$uploadViewport(dh.getSolidShader(), "solid", fbW, fbH, reason);
+        stereoscopic$uploadViewport(dh.getTranslucentShader(), "translucent", fbW, fbH, reason);
+        stereoscopic$uploadViewport(dh.getShadowShader(), "shadow", fbW, fbH, reason);
     }
 
-    private static int stereoscopic$uploadViewport(
-            net.irisshaders.iris.compat.dh.IrisLodRenderProgram program, int fbW, int fbH) {
-        if (program == null) return 0;
+    private static void stereoscopic$uploadViewport(
+            net.irisshaders.iris.compat.dh.IrisLodRenderProgram program,
+            String label, int fbW, int fbH, String reason) {
+        if (program == null) return;
         int id = ((com.mitchellmarx.stereoscopic.mixin.iris.IrisLodRenderProgramAccessor) (Object) program)
             .stereoscopic$getId();
-        if (id == 0) return 0;
+        if (id == 0) return;
         int prev = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM);
         try {
             org.lwjgl.opengl.GL20.glUseProgram(id);
-            stereoscopic$setFloatUniform(id, "viewWidth", fbW);
-            stereoscopic$setFloatUniform(id, "viewHeight", fbH);
-            stereoscopic$setFloatUniform(id, "aspectRatio", (float) fbW / (float) fbH);
+            String w = stereoscopic$setFloatUniform(id, "viewWidth", fbW);
+            String h = stereoscopic$setFloatUniform(id, "viewHeight", fbH);
+            String a = stereoscopic$setFloatUniform(id, "aspectRatio", (float) fbW / (float) fbH);
+            Stereoscopic.LOG.info("[stereo] DH {} program {} ({}): viewWidth {} viewHeight {} aspectRatio {}",
+                label, id, reason, w, h, a);
         } finally {
             org.lwjgl.opengl.GL20.glUseProgram(prev);
         }
-        return 1;
     }
 
-    private static void stereoscopic$setFloatUniform(int programId, String name, float value) {
+    /** Uploads and returns "old->new" for the log, or "ABSENT(-1)" when the
+     *  uniform has no location (renamed by the patcher or UBO-hosted — i.e.
+     *  the upload cannot reach it and the staleness lives elsewhere). */
+    private static String stereoscopic$setFloatUniform(int programId, String name, float value) {
         int loc = org.lwjgl.opengl.GL20.glGetUniformLocation(programId, name);
-        if (loc >= 0) org.lwjgl.opengl.GL20.glUniform1f(loc, value);
+        if (loc < 0) return "ABSENT(-1)";
+        float[] old = new float[1];
+        org.lwjgl.opengl.GL20.glGetUniformfv(programId, loc, old);
+        org.lwjgl.opengl.GL20.glUniform1f(loc, value);
+        return old[0] + "->" + value;
     }
 
     /**
