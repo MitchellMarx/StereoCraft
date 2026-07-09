@@ -67,6 +67,7 @@ public abstract class MixinGameRenderer {
         StereoState.INSTANCE.beginFrame(w.getWidth(), w.getHeight());
         StereoCursor.tick();
         stereoscopic$ensureIrisRebuiltForStereo();
+        PerEyeRenderTargetHooks.tickResizeWatch(w.getWidth(), w.getHeight());
     }
 
     /**

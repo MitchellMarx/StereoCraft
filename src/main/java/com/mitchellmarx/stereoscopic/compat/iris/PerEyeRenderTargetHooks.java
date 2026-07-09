@@ -28,6 +28,74 @@ public final class PerEyeRenderTargetHooks {
         return StereoState.INSTANCE.currentEyeIndex();
     }
 
+    // --- Post-resize Iris pipeline rebuild (debounced) ---
+    //
+    // A window resize leaves DH's Iris-side render programs with stale
+    // program-lifetime state (observed: dh_terrain's viewWidth/viewHeight
+    // stay at the pre-resize values, so its LOD distance-discard reconstructs
+    // huge view distances and LOD terrain overdraws vanilla terrain; the
+    // pack-side binding of those uniforms is not reachable through any
+    // per-frame Iris uniform holder we can retarget). The user-verified
+    // mitigation is toggling DH, which forces a pipeline rebuild. Automate
+    // exactly that: after framebuffer dims change and stay stable for
+    // REBUILD_STABLE_FRAMES (debounce — dragging a window edge fires resizes
+    // continuously), destroy the pipeline via Iris's own dimension-change
+    // path (PipelineManager.destroyPipeline; it lazily recreates next frame,
+    // and the log-proven flow rebuilds our per-eye bank + DH programs
+    // cleanly). Only armed while stereo is active AND a pipeline exists —
+    // with stereo off our redirect is inert and vanilla behavior applies.
+
+    private static final int REBUILD_STABLE_FRAMES = 40;
+    private static int resizeLastW = -1;
+    private static int resizeLastH = -1;
+    private static int resizeStableFrames;
+    private static boolean resizeRebuildPending;
+
+    /** Called once per frame from MixinGameRenderer's beginFrame HEAD. */
+    public static void tickResizeWatch(int fbW, int fbH) {
+        if (!IRIS_PRESENT) return;
+        if (fbW <= 0 || fbH <= 0) return;
+        if (resizeLastW == -1) {
+            resizeLastW = fbW;
+            resizeLastH = fbH;
+            return;
+        }
+        if (fbW != resizeLastW || fbH != resizeLastH) {
+            resizeLastW = fbW;
+            resizeLastH = fbH;
+            resizeStableFrames = 0;
+            resizeRebuildPending =
+                com.mitchellmarx.stereoscopic.core.StereoOptions.INSTANCE.mode.isActive()
+                    && irisPipelineActive();
+            return;
+        }
+        if (resizeRebuildPending && ++resizeStableFrames >= REBUILD_STABLE_FRAMES) {
+            resizeRebuildPending = false;
+            try {
+                Stereoscopic.LOG.info(
+                    "[stereo] window resized to {}x{} — rebuilding Iris pipeline (refreshes DH programs)", fbW, fbH);
+                irisDestroyPipeline();
+            } catch (Throwable t) {
+                Stereoscopic.LOG.error("Iris pipeline rebuild after resize failed", t);
+            }
+        }
+    }
+
+    private static boolean irisPipelineActive() {
+        if (!IRIS_PRESENT) return false;
+        try {
+            return net.irisshaders.iris.Iris.getPipelineManager().getPipelineNullable() != null;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static void irisDestroyPipeline() {
+        // Same flow Iris uses on dimension change: destroy now, lazily
+        // recreated by preparePipeline on the next level render.
+        net.irisshaders.iris.Iris.getPipelineManager().destroyPipeline();
+    }
+
     /**
      * Force-rebuild the Iris shader pipeline because the stereo eye count just
      * changed (driven from the Sodium options-page Mode binding's
