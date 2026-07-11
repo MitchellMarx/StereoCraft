@@ -28,111 +28,13 @@ public final class PerEyeRenderTargetHooks {
         return StereoState.INSTANCE.currentEyeIndex();
     }
 
-    // --- Post-resize DH program uniform refresh ---
-    //
-    // A window resize leaves DH's Iris-side render programs with stale
-    // program-lifetime uniforms: dh_terrain's viewWidth/viewHeight keep the
-    // pre-resize values (no per-frame Iris uniform holder reaches them — the
-    // DH programs only register fog/custom/builtin-replacement holders), so
-    // the LOD distance-discard reconstructs huge view distances and LOD
-    // terrain overdraws vanilla terrain. Rebuilding the whole pipeline fixes
-    // it (that's what a DH toggle does) but costs a multi-second shader
-    // recompile hang. Instead, surgically re-upload viewWidth / viewHeight /
-    // aspectRatio on the DH programs the moment the framebuffer dims change —
-    // a couple of glUniform1f calls, no hitch, no delay. Gated on stereo
-    // being active (with stereo off the mod's target substitution is inert
-    // and vanilla/Iris behavior applies).
-
-    private static final boolean DH_PRESENT =
-        FabricLoader.getInstance().isModLoaded("distanthorizons");
-
-    private static int resizeLastW = -1;
-    private static int resizeLastH = -1;
-    private static int recheckCountdown = -1;
-
-    /**
-     * Bumped on every framebuffer-dims change while stereo is active.
-     * {@code MixinProgramUniforms} watches it and replays each program's
-     * ONCE-frequency uniform tier (Iris uploads that tier at first update()
-     * only — its values freeze at program-creation state, which is how the
-     * DH LOD programs kept pre-resize viewWidth/viewHeight and friends).
-     */
-    private static volatile int resizeGeneration;
-
-    public static int getResizeGeneration() {
-        return resizeGeneration;
-    }
-
-    /** Called once per frame from MixinGameRenderer's beginFrame HEAD. */
-    public static void tickResizeWatch(int fbW, int fbH) {
-        if (!IRIS_PRESENT) return;
-        if (fbW <= 0 || fbH <= 0) return;
-        boolean changed = (fbW != resizeLastW || fbH != resizeLastH) && resizeLastW != -1;
-        resizeLastW = fbW;
-        resizeLastH = fbH;
-        if (changed && com.mitchellmarx.stereoscopic.core.StereoOptions.INSTANCE.mode.isActive()) {
-            resizeGeneration++;
-            Stereoscopic.LOG.info("[stereo] resize {}x{}: ONCE-uniform replay armed (generation {})",
-                fbW, fbH, resizeGeneration);
-            if (DH_PRESENT) {
-                try {
-                    irisRefreshDhViewportUniforms(fbW, fbH, "resize");
-                    recheckCountdown = 120; // re-read ~2s later to catch overwrites
-                } catch (Throwable t) {
-                    Stereoscopic.LOG.warn("[stereo] DH viewport-uniform refresh after resize failed", t);
-                }
-            }
-            return;
-        }
-        if (DH_PRESENT && recheckCountdown > 0 && --recheckCountdown == 0) {
-            try {
-                irisRefreshDhViewportUniforms(fbW, fbH, "recheck");
-            } catch (Throwable t) {
-                Stereoscopic.LOG.warn("[stereo] DH viewport-uniform recheck failed", t);
-            }
-        }
-    }
-
-    private static void irisRefreshDhViewportUniforms(int fbW, int fbH, String reason) {
-        net.irisshaders.iris.compat.dh.DHCompatInternal dh =
-            com.mitchellmarx.stereoscopic.mixin.iris.LodRendererEventsInvoker.stereoscopic$getInstance();
-        if (dh == null) return;
-        stereoscopic$uploadViewport(dh.getSolidShader(), "solid", fbW, fbH, reason);
-        stereoscopic$uploadViewport(dh.getTranslucentShader(), "translucent", fbW, fbH, reason);
-        stereoscopic$uploadViewport(dh.getShadowShader(), "shadow", fbW, fbH, reason);
-    }
-
-    private static void stereoscopic$uploadViewport(
-            net.irisshaders.iris.compat.dh.IrisLodRenderProgram program,
-            String label, int fbW, int fbH, String reason) {
-        if (program == null) return;
-        int id = ((com.mitchellmarx.stereoscopic.mixin.iris.IrisLodRenderProgramAccessor) (Object) program)
-            .stereoscopic$getId();
-        if (id == 0) return;
-        int prev = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL20.GL_CURRENT_PROGRAM);
-        try {
-            org.lwjgl.opengl.GL20.glUseProgram(id);
-            String w = stereoscopic$setFloatUniform(id, "viewWidth", fbW);
-            String h = stereoscopic$setFloatUniform(id, "viewHeight", fbH);
-            String a = stereoscopic$setFloatUniform(id, "aspectRatio", (float) fbW / (float) fbH);
-            Stereoscopic.LOG.info("[stereo] DH {} program {} ({}): viewWidth {} viewHeight {} aspectRatio {}",
-                label, id, reason, w, h, a);
-        } finally {
-            org.lwjgl.opengl.GL20.glUseProgram(prev);
-        }
-    }
-
-    /** Uploads and returns "old->new" for the log, or "ABSENT(-1)" when the
-     *  uniform has no location (renamed by the patcher or UBO-hosted — i.e.
-     *  the upload cannot reach it and the staleness lives elsewhere). */
-    private static String stereoscopic$setFloatUniform(int programId, String name, float value) {
-        int loc = org.lwjgl.opengl.GL20.glGetUniformLocation(programId, name);
-        if (loc < 0) return "ABSENT(-1)";
-        float[] old = new float[1];
-        org.lwjgl.opengl.GL20.glGetUniformfv(programId, loc, old);
-        org.lwjgl.opengl.GL20.glUniform1f(loc, value);
-        return old[0] + "->" + value;
-    }
+    // NOTE: the post-resize DH LOD/cloud overdraw investigated here turned
+    // out to be an UPSTREAM Iris+DistantHorizons bug on MC 26.2 — it
+    // reproduces with this mod fully removed and with stereo disabled, and
+    // disabling shaders clears it. The workaround stack that used to live
+    // here (DH viewport-uniform re-upload, ONCE-uniform-tier replay,
+    // debounced pipeline rebuild) was removed once that baseline was
+    // established; report/track the bug against Iris instead.
 
     /**
      * Force-rebuild the Iris shader pipeline because the stereo eye count just

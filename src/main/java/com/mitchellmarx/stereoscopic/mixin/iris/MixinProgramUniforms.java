@@ -1,6 +1,5 @@
 package com.mitchellmarx.stereoscopic.mixin.iris;
 
-import com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import net.irisshaders.iris.gl.program.ProgramUniforms;
 import org.spongepowered.asm.mixin.Mixin;
@@ -53,40 +52,12 @@ public abstract class MixinProgramUniforms {
 
     @Shadow int lastFrame;
 
-    @Shadow private com.google.common.collect.ImmutableList<net.irisshaders.iris.gl.uniform.Uniform> once;
-
     /** -1 = never seen; 0 = LEFT/MONO; 1 = RIGHT. Stored per ProgramUniforms
      *  instance because PER_FRAME state is per-program. */
     @Unique private int stereoscopic$lastEye = -1;
 
-    /** Iris uploads the ONCE-frequency uniform tier on the first update()
-     *  then nulls {@code once} — those values (viewWidth/viewHeight and
-     *  friends on programs that don't register per-frame viewport holders,
-     *  e.g. the DH LOD programs) freeze at program-creation-time state and
-     *  go stale on window resize (observed: DH LOD terrain overdrawing
-     *  vanilla terrain because dh_terrain's distance-discard read the
-     *  pre-resize viewport). Keep a backup of the list and replay the whole
-     *  tier after a resize — suppliers read live state, so the replay
-     *  uploads current values. */
-    @Unique private com.google.common.collect.ImmutableList<net.irisshaders.iris.gl.uniform.Uniform> stereoscopic$onceBackup;
-    @Unique private int stereoscopic$onceGeneration;
-
     @Inject(method = "update()V", at = @At("HEAD"))
     private void stereoscopic$invalidateOnEyeSwitch(CallbackInfo ci) {
-        // Capture the ONCE tier before Iris's first update() discards it.
-        if (once != null && stereoscopic$onceBackup == null) {
-            stereoscopic$onceBackup = once;
-        }
-        int gen = PerEyeRenderTargetHooks.getResizeGeneration();
-        if (gen != stereoscopic$onceGeneration) {
-            stereoscopic$onceGeneration = gen;
-            if (once == null && stereoscopic$onceBackup != null) {
-                // Re-arm: Iris's own update() body re-runs updateStage(once)
-                // and nulls it again.
-                once = stereoscopic$onceBackup;
-            }
-        }
-
         StereoState s = StereoState.INSTANCE;
         if (!s.isActive() || !s.isInWorldPass()) return;
         int eye = s.currentEyeIndex();

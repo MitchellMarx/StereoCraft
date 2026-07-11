@@ -71,10 +71,6 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
     // Snapshot of the eye state on resizeIfNeeded entry, restored in RETURN.
     @Unique private int stereoscopic$resizeSavedEye = 0;
     @Unique private boolean stereoscopic$resizeFieldWasOnRight = false;
-    // One-shot diagnostic: log the first post-resize eye-rebind walk so a
-    // user log can distinguish "FBs still bound to dead pre-resize textures"
-    // (misses > 0) from a healthy rebind.
-    @Unique private boolean stereoscopic$logNextRebind = false;
 
     @Inject(method = "<init>", at = @At("RETURN"))
     private void stereoscopic$allocSiblingBank(int width, int height, GpuTexture depthTexture,
@@ -222,15 +218,13 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
 
         RenderTarget[] sourceBank = (eyeIndex == 0) ? targets : stereoscopic$rightTargets;
 
-        int diagWalked = 0, diagRebound = 0, diagMissed = 0;
         for (GlFramebuffer fb : ownedFramebuffers) {
             Int2IntMap attMap = ((MixinGlFramebuffer)(Object) fb).stereoscopic$getAttachments();
             int[] slots = attMap.keySet().toIntArray();
             for (int slot : slots) {
                 int currentTexId = attMap.get(slot);
                 int meta = stereoscopic$reverseMap.get(currentTexId);
-                diagWalked++;
-                if (meta < 0) { diagMissed++; continue; }
+                if (meta < 0) continue;
                 int colortexIdx = meta >>> 1;
                 boolean isAlt = (meta & 1) == 1;
                 if (colortexIdx >= sourceBank.length) continue;
@@ -239,16 +233,8 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
                 int newTexId = isAlt ? rt.getAltTexture() : rt.getMainTexture();
                 if (newTexId != currentTexId) {
                     fb.addColorAttachment(slot, newTexId);
-                    diagRebound++;
                 }
             }
-        }
-        if (stereoscopic$logNextRebind) {
-            stereoscopic$logNextRebind = false;
-            Stereoscopic.LOG.info(
-                "[stereo] post-resize rebind walk (eye {}): {} attachments, {} rebound, {} not in reverseMap{}",
-                eyeIndex, diagWalked, diagRebound, diagMissed,
-                diagMissed > 0 ? " <- STALE: FBs still reference pre-resize textures" : "");
         }
 
         // Voxy's IrisVoxyRenderPipeline owns two framebuffers outside of
@@ -338,8 +324,6 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             int incomingGl = stereoscopic$glId(newDepthTextureId);
             int currentGl = stereoscopic$glId(currentDepthTexture);
             if (incomingGl != 0 && incomingGl != currentGl) {
-                Stereoscopic.LOG.info("[stereo] main-depth identity change: glId {} -> {} (forcing Iris depth rebind)",
-                    currentGl, incomingGl);
                 cachedDepthBufferVersion = newDepthBufferVersion ^ 0x7FFFFFFF;
             }
         } catch (Throwable t) {
@@ -404,9 +388,6 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             // sentinel forces the next setActiveEye to walk + rebind regardless
             // of whether N matches the saved activeEye.
             stereoscopic$activeEye = -1;
-            stereoscopic$logNextRebind = true;
-            Stereoscopic.LOG.info("[stereo] Iris bank rebuilt after resize -> {}x{} ({} owned FBs)",
-                cachedWidth, cachedHeight, ownedFramebuffers.size());
         } catch (Throwable t) {
             stereoscopic$dropSiblingBank("resize failed", t);
         }
