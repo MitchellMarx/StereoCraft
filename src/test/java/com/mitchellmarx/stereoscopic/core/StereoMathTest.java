@@ -97,6 +97,32 @@ class StereoMathTest {
             "convergence target should project to NDC x = 0 after shear");
     }
 
+    @Test
+    void fullSbsAspectDoublesM00AndPreservesVertical() {
+        // Halving the aspect from W/H to (W/2)/H doubles m00 (= f/aspect);
+        // vertical focal m11 must be untouched.
+        Matrix4f wide = new Matrix4f().perspective((float) Math.toRadians(70), 32f / 9f, 0.1f, 1000f);
+        Matrix4f narrow = new Matrix4f().perspective((float) Math.toRadians(70), 16f / 9f, 0.1f, 1000f);
+        float m11 = wide.m11();
+        StereoMath.applyFullSbsAspect(wide);
+        assertMatrixEquals(narrow, wide, EPS);
+        assertEquals(m11, wide.m11(), EPS, "vertical FOV unchanged");
+    }
+
+    @Test
+    void fullSbsAspectThenShearConvergesAtTarget() {
+        // The convergence guarantee must hold for the FULL-mode frustum too:
+        // aspect fix first, then shear, target still lands at NDC x = 0.
+        float dx = -0.032f;
+        float D  = 4.0f;
+        Matrix4f proj = new Matrix4f().perspective((float) Math.toRadians(70), 32f / 9f, 0.1f, 1000f);
+        StereoMath.applyFullSbsAspect(proj);
+        StereoMath.applyConvergenceShear(proj, dx, D);
+        float xClip = proj.m00() * (-dx) + proj.m20() * (-D);
+        float wClip = proj.m23() * (-D) + proj.m33();
+        assertEquals(0f, xClip / wClip, 1e-5f);
+    }
+
     private static void assertMatrixEquals(Matrix4f expected, Matrix4f actual, float eps) {
         for (int col = 0; col < 4; col++) {
             for (int row = 0; row < 4; row++) {

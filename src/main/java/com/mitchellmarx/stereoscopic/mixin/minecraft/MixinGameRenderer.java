@@ -129,8 +129,14 @@ public abstract class MixinGameRenderer {
                 crs.pos = basePos.add(-left.x() * dx, -left.y() * dx, -left.z() * dx);
                 // Off-axis convergence shear on a fresh copy of the mono
                 // projection (applyConvergenceShear mutates in place).
+                // SBS_FULL first halves the aspect to (W/2)/H — order matters,
+                // the shear reads m00 (see StereoMath.applyFullSbsAspect).
+                Matrix4f eyeProj = new Matrix4f(baseProj);
+                if (StereoState.INSTANCE.getFrameMode().isFull()) {
+                    StereoMath.applyFullSbsAspect(eyeProj);
+                }
                 crs.projectionMatrix = StereoMath.applyConvergenceShear(
-                    new Matrix4f(baseProj), dx, StereoState.INSTANCE.getFrameConvergence());
+                    eyeProj, dx, StereoState.INSTANCE.getFrameConvergence());
 
                 PerEyeRenderer.setScratchFbActive(true);
                 try {

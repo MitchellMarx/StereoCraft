@@ -144,7 +144,15 @@ public abstract class MixinGuiRenderer {
         }
 
         Matrix4f m = new Matrix4f(original);
-        if (leftHalf) {
+        if (s.getFrameMode().isFull()) {
+            // SBS_FULL: MixinWindow halves the GUI *layout* width, so content
+            // laid out for [0..guiW/2] drawn UNcompressed at the (unchanged)
+            // full-width ortho lands exactly in one half at 1:1 — no 0.5
+            // squeeze. Only the right eye needs the half-window offset.
+            if (!leftHalf) {
+                m.translate(guiW * 0.5f, 0f, 0f);
+            }
+        } else if (leftHalf) {
             m.scale(0.5f, 1f, 1f);
         } else {
             m.translate(guiW * 0.5f, 0f, 0f).scale(0.5f, 1f, 1f);

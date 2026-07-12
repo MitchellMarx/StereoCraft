@@ -14,6 +14,7 @@
     "minecraft.MixinGlDevice",
     "minecraft.MixinGlStateManager",
     "minecraft.MixinMouse",
+    "minecraft.MixinWindow",
     "minecraft.MouseAccessor",
     "minecraft.CameraAccessor",
     "minecraft.MixinMinecraftClient",
