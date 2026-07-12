@@ -629,11 +629,13 @@ public final class CursorPresentThread {
         // SBS_HALF stretches each half 2× horizontally on the display, so a
         // sprite drawn at natural width here would land 2× wide. Pre-compress
         // X (size + hotspot) so it shows at native dims after stretching.
-        int halfW = Math.max(1, cursorTexW / 2);
-        int halfHotX = cursorHotspotX / 2;
-        int x0 = x - halfHotX;
+        // SBS_FULL displays each half as-is — draw at natural width.
+        boolean compress = com.mitchellmarx.stereoscopic.core.StereoOptions.INSTANCE.mode.isHalf();
+        int spriteW = compress ? Math.max(1, cursorTexW / 2) : cursorTexW;
+        int hotX = compress ? cursorHotspotX / 2 : cursorHotspotX;
+        int x0 = x - hotX;
         int y0 = y - cursorHotspotY;
-        int x1 = x0 + halfW;
+        int x1 = x0 + spriteW;
         int y1 = y0 + cursorTexH;
         GL11.glEnable(GL11.GL_TEXTURE_2D);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, cursorTexId);

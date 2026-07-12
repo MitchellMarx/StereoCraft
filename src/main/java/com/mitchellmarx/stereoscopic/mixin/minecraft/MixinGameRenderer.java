@@ -99,6 +99,12 @@ public abstract class MixinGameRenderer {
     private Matrix4f stereoscopic$applyConvergenceShear(Matrix4f proj) {
         StereoState s = StereoState.INSTANCE;
         if (!s.isActive() || !s.isInWorldPass()) return proj;
+        // SBS_FULL first halves the aspect to (W/2)/H so each half carries a
+        // proportionally correct image. Order matters: the shear post-multiply
+        // reads m00, so the aspect fix must run first (see StereoMath).
+        if (s.getFrameMode().isFull()) {
+            StereoMath.applyFullSbsAspect(proj);
+        }
         return StereoMath.applyConvergenceShear(proj, s.getEyeOffset(), s.getFrameConvergence());
     }
 

@@ -9,4 +9,9 @@ class StereoModeTest {
     @Test void sbsHalfIsSideBySide()  { assertTrue(StereoMode.SBS_HALF.isSideBySide()); }
     @Test void sbsHalfIsHalf()        { assertTrue(StereoMode.SBS_HALF.isHalf()); }
     @Test void offIsNotSideBySide()   { assertFalse(StereoMode.OFF.isSideBySide()); }
+    @Test void sbsFullIsActive()      { assertTrue(StereoMode.SBS_FULL.isActive()); }
+    @Test void sbsFullIsSideBySide()  { assertTrue(StereoMode.SBS_FULL.isSideBySide()); }
+    @Test void sbsFullIsNotHalf()     { assertFalse(StereoMode.SBS_FULL.isHalf()); }
+    @Test void sbsFullIsFull()        { assertTrue(StereoMode.SBS_FULL.isFull()); }
+    @Test void sbsHalfIsNotFull()     { assertFalse(StereoMode.SBS_HALF.isFull()); }
 }

@@ -96,6 +96,18 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
         if (StereoOptions.INSTANCE.mode == v) return;
         StereoOptions.INSTANCE.mode = v;
         PerEyeRenderTargetHooks.rebuildPipelineForStereoToggle();
+        // SBS_FULL halves the GUI layout width (MixinWindow); open screens cache
+        // their dimensions at init, so re-lay-out the current screen for the new
+        // mode. Screen.resize(w,h) is the GUI-only re-init (the 1.21.11 analogue
+        // of 26.2's resizeGui()); getScaledWidth already reflects the new mode.
+        try {
+            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+            if (mc.currentScreen != null) {
+                mc.currentScreen.resize(mc.getWindow().getScaledWidth(), mc.getWindow().getScaledHeight());
+            }
+        } catch (Throwable t) {
+            Stereoscopic.LOG.warn("Screen re-layout after stereo mode change failed", t);
+        }
     }
 
     private static float clampedMetersFromMm(int mm) {
@@ -111,6 +123,7 @@ public final class StereoOptionsPage implements ConfigEntryPoint {
         return switch (m) {
             case OFF      -> Text.translatable("stereoscopic.options.mode.off");
             case SBS_HALF -> Text.translatable("stereoscopic.options.mode.sbs_half");
+            case SBS_FULL -> Text.translatable("stereoscopic.options.mode.sbs_full");
         };
     }
 }

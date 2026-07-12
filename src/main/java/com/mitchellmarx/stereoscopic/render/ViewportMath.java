@@ -13,7 +13,7 @@ public final class ViewportMath {
     /** Compute eye viewport rect in main-FB pixel space. With {@link
      * StereoOptions#swapEyes} set, swaps which eye lands in which half. */
     public static Rect eyeRect(StereoState.Eye eye, StereoMode mode, int fbW, int fbH) {
-        if (mode == StereoMode.SBS_HALF) {
+        if (mode.isSideBySide()) {
             int half = fbW / 2;
             boolean leftHalf;
             if (StereoOptions.INSTANCE.swapEyes) {

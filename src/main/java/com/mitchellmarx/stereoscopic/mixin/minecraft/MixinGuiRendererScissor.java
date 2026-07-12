@@ -61,7 +61,19 @@ public abstract class MixinGuiRendererScissor {
         boolean leftHalf = StereoOptions.INSTANCE.swapEyes
             ? (s.getCurrentEye() == StereoState.Eye.RIGHT)
             : (s.getCurrentEye() == StereoState.Eye.LEFT);
-        if (leftHalf) {
+        if (s.getFrameMode().isFull()) {
+            // SBS_FULL: geometry is drawn UNcompressed (half-width layout, see
+            // MixinGuiRenderer/MixinWindow), so the incoming gui×guiScale scissor
+            // (laid out at half width) already sits in the left half; the right
+            // eye only needs the half-window offset. Clamp so the offset rect
+            // stays inside the FB.
+            if (leftHalf) {
+                original.call(pass, x, y, w, h);
+            } else {
+                int rx = x + fbW / 2;
+                original.call(pass, rx, y, Math.max(0, Math.min(w, fbW - rx)), h);
+            }
+        } else if (leftHalf) {
             original.call(pass, x / 2,           y, w / 2, h);
         } else {
             original.call(pass, x / 2 + fbW / 2, y, w / 2, h);

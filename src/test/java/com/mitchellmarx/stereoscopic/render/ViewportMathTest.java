@@ -19,6 +19,14 @@ class ViewportMathTest {
         ViewportMath.Rect r = ViewportMath.eyeRect(StereoState.Eye.RIGHT, StereoMode.SBS_HALF, 1920, 1080);
         assertEquals(960, r.x()); assertEquals(960, r.w());
     }
+    @Test void sbsFullUsesSameHalves() {
+        // FULL mode differs from HALF in projection aspect + GUI layout only;
+        // the destination half-rects are identical.
+        ViewportMath.Rect l = ViewportMath.eyeRect(StereoState.Eye.LEFT, StereoMode.SBS_FULL, 3840, 1080);
+        ViewportMath.Rect r = ViewportMath.eyeRect(StereoState.Eye.RIGHT, StereoMode.SBS_FULL, 3840, 1080);
+        assertEquals(0, l.x()); assertEquals(1920, l.w());
+        assertEquals(1920, r.x()); assertEquals(1920, r.w());
+    }
     @Test void oddWidthRoundsDown() {
         // If fbW is odd, both halves round down — right eye is identical width.
         ViewportMath.Rect r = ViewportMath.eyeRect(StereoState.Eye.RIGHT, StereoMode.SBS_HALF, 1921, 1080);
