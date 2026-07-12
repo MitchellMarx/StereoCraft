@@ -29,6 +29,7 @@
     "minecraft.MixinMinecraft_StereoAchievement",
     "minecraft.MixinMinecraft_StereoScratchFb",
     "sodium.MixinRenderGlobal_StereoChunkSkip",
-    "sodium.MixinSodiumGameOptionPages_StereoToggle"
+    "sodium.MixinSodiumGameOptionPages_StereoToggle",
+    "sodium.MixinViewport"
   ]
 }

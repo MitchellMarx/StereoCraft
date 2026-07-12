@@ -24,13 +24,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * is set defensively so our cancel runs before Angelica's overwrite body executes any
  * meaningful work.
  *
- * <p>Known caveat (handoff memory project_sodium_chunk_skip): at extreme IPDs or very
- * small chunk sizes, the RIGHT eye's frustum could theoretically include chunks the LEFT
- * eye's frustum excluded. At 64 mm IPD and 16-block chunk granularity the divergence is
- * sub-pixel and unobservable; if a tester reports a missing-chunk artifact, widen the
- * LEFT eye's frustum to cover both eyes instead of removing this skip.
+ * <p>Because RIGHT reuses LEFT's visible-section list, the LEFT eye's cull frustum must
+ * cover BOTH eye frusta or sections only the RIGHT eye can see get culled and flicker.
+ * {@link MixinViewport} widens the strict per-section frustum test by the full LEFT→RIGHT
+ * lateral divergence ({@code ipd + shear·distance}) while stereo is active, which is what
+ * makes this skip safe at all IPD / convergence settings. (This is the "widen the LEFT
+ * eye's frustum to cover both eyes instead of removing this skip" fix noted in the
+ * project_sodium_chunk_skip handoff.)
  *
- * <p>Port of sbs2 commit {@code aa91edc5}.
+ * <p>Port of sbs2 commit {@code aa91edc5}; both-eye margin added per issue #4.
  */
 @Mixin(value = RenderGlobal.class, priority = 900)
 public abstract class MixinRenderGlobal_StereoChunkSkip {
