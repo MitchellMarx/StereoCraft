@@ -8,10 +8,12 @@ import com.mitchellmarx.stereoscopic.core.StereoState;
  * {@link com.mitchellmarx.stereoscopic.mixin.sodium.MixinSodiumWorldRenderer}):
  * <ol>
  *   <li>LEFT's {@code setupTerrain} runs from the mono camera position so the
- *       visible-section list it builds covers both eyes' direct frustum reads.</li>
- *   <li>Sodium's Viewport carries a section-padded frustum margin much larger
- *       than IPD/2 (~6cm), absorbing the per-eye frustum offset at chunk
- *       granularity.</li>
+ *       visible-section list it builds is centered between the two eyes.</li>
+ *   <li>{@code MixinOcclusionCuller} widens the strict per-section frustum test
+ *       by {@link com.mitchellmarx.stereoscopic.core.StereoMath#cullMargin} so
+ *       that mono-centered list covers BOTH eyes' frusta — including the
+ *       convergence shear tilt, which Sodium's fixed ~1.125-block pad does not
+ *       absorb past ~140 blocks (issue #4).</li>
  * </ol>
  */
 public final class SecondEyeSkipHooks {

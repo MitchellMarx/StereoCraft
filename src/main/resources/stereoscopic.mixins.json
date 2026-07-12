@@ -14,7 +14,8 @@
         "minecraft.MixinCubeMap",
         "minecraft.CameraAccessor",
         "minecraft.MouseAccessor",
-        "sodium.MixinSodiumWorldRenderer"
+        "sodium.MixinSodiumWorldRenderer",
+        "sodium.MixinOcclusionCuller"
     ],
     "mixins": [],
     "injectors": { "defaultRequire": 1 }

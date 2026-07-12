@@ -47,7 +47,7 @@ You can also edit `config/stereoscopic-options.json` manually — the format is 
 
 - **Async cursor presents Windows-only**: cursor mirror uses Win32 cursor APIs. Linux/macOS shows the cursor in only one eye while a GUI is open.
 - **Iris pipeline first-frame rebuild**: on world load with shaders already on, Iris loads its pipeline once before our stereo state is published. We auto-trigger a rebuild on the first stereo-active frame — you may see a one-frame flash.
-- **Sodium chunk-visibility cull**: BFS skipped on the second eye (chunks visible to one eye are visible to the other at typical IPD). At extreme IPD / convergence near a chunk boundary you might see a missing-chunk artifact for one frame.
+- **Sodium chunk-visibility cull**: the chunk-graph BFS runs once per stereo frame (skipped on the second eye) from the mono camera position, and the strict per-section frustum test is widened by the exact worst-case per-eye divergence (IPD/2 origin offset plus the convergence shear tilt) so the single visible-section list covers both eyes' frusta at any depth.
 
 ## Differences from the Fabric / Angelica siblings
 

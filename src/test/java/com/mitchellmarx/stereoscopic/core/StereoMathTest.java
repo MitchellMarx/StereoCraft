@@ -97,6 +97,39 @@ class StereoMathTest {
             "convergence target should project to NDC x = 0 after shear");
     }
 
+    @Test
+    void cullMarginIsHalfIpdAtZeroDistance() {
+        // At the camera, only the origin offset (ipd/2) diverges.
+        assertEquals(0.032f, StereoMath.cullMargin(0.064f, 4f, 0f), EPS);
+    }
+
+    @Test
+    void cullMarginAddsShearTermWithDistance() {
+        // extra = ipd/2 + (ipd/2 / convergence) * horizontalDist.
+        // ipd=0.064, conv=4, dist=100 -> 0.032 + 0.008*100 = 0.832
+        assertEquals(0.832f, StereoMath.cullMargin(0.064f, 4f, 100f), 1e-5f);
+        // The shear slope matches convergenceShear's magnitude (0.008 per block).
+        assertEquals(0.008f, StereoMath.convergenceShear(-0.032f, 4f), EPS);
+    }
+
+    @Test
+    void cullMarginExceedsSodiumSlackBeyond140Blocks() {
+        // Sodium's strict test carries 1.125 blocks of slack over the section
+        // half-extent. The default profile (0.064 IPD, 4-block convergence)
+        // needs more than that past ~140 blocks — the flicker threshold.
+        assertTrue(StereoMath.cullMargin(0.064f, 4f, 140f) > 1.125f,
+            "margin at 140 blocks should exceed Sodium's 1.125-block pad");
+        assertTrue(StereoMath.cullMargin(0.064f, 4f, 130f) < 1.125f,
+            "margin at 130 blocks should still fit within Sodium's pad");
+    }
+
+    @Test
+    void cullMarginHasNoShearTermInParallelAxisMode() {
+        // convergence <= 0 disables the shear; only ipd/2 remains at any range.
+        assertEquals(0.032f, StereoMath.cullMargin(0.064f, 0f, 500f), EPS);
+        assertEquals(0.032f, StereoMath.cullMargin(0.064f, -1f, 500f), EPS);
+    }
+
     private static void assertMatrixEquals(Matrix4f expected, Matrix4f actual, float eps) {
         for (int col = 0; col < 4; col++) {
             for (int row = 0; row < 4; row++) {

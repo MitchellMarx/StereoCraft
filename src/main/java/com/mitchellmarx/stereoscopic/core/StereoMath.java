@@ -58,4 +58,44 @@ public final class StereoMath {
         if (shear == 0f) return proj;
         return proj.mul(new Matrix4f().m20(shear));
     }
+
+    /**
+     * Extra per-section frustum-cull margin, in blocks, so a MONO cull frustum
+     * covers BOTH eye frusta (issue #4 — world blocks flickering in SBS).
+     *
+     * <p>Sodium builds one visible-section list per stereo frame from the mono
+     * camera position (this port restores the mono pos across {@code
+     * setupTerrain}; see {@code MixinSodiumWorldRenderer}). Each eye then
+     * renders with a frustum that diverges from that mono cull frustum by (a) an
+     * origin shift of {@code ipd/2} along the camera-right axis and (b) the
+     * convergence shear, which tilts the frustum horizontally by a slope of
+     * {@code (ipd/2)/convergence} (world-lateral blocks per block of view
+     * depth). Sodium's strict section test ({@code OcclusionCuller
+     * .isWithinFrustum} → {@code Viewport.isBoxVisible} with a 9.125-block
+     * padded radius) carries only a 1.125-block slack over the 8-block section
+     * half-extent — enough for the {@code ipd/2} origin shift (~0.03 blocks) but
+     * NOT the shear at distance: at 0.064 m IPD / 4-block convergence the tilt
+     * is 0.008·d, exceeding the slack beyond ~140 blocks, so edge sections only
+     * one eye can see get culled and pop as the camera turns.
+     *
+     * <p>The margin is the exact worst-case lateral divergence of an eye frustum
+     * from the mono one at that section's camera-relative horizontal distance
+     * ({@code horizontalDist} ≥ view depth, so this is conservative). With
+     * convergence off (parallel-axis) the shear term is zero and {@code ipd/2}
+     * alone covers the origin offset.
+     *
+     * @param ipd            interpupillary distance in blocks (== meters in MC)
+     * @param convergence    convergence distance in blocks; ≤ 0 = parallel-axis
+     * @param horizontalDist camera-relative horizontal distance to the section,
+     *                       in blocks ({@code sqrt(x² + z²)})
+     * @return the extra margin in blocks to add to the section half-extent
+     */
+    public static float cullMargin(float ipd, float convergence, float horizontalDist) {
+        float ipdHalf = ipd * 0.5f;
+        float extra = ipdHalf;
+        if (convergence > 0f) {
+            extra += (ipdHalf / convergence) * horizontalDist;
+        }
+        return extra;
+    }
 }
