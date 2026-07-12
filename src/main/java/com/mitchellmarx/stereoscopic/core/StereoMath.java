@@ -78,35 +78,44 @@ public final class StereoMath {
     }
 
     /**
-     * Extra per-section frustum-cull margin, in blocks, so a MONO cull frustum
-     * covers BOTH eye frusta (issue #4 — world blocks flickering in SBS).
+     * Extra per-section frustum-cull margin, in blocks, so the single per-frame
+     * cull list covers BOTH eye frusta (issue #4 — world blocks flickering in
+     * SBS).
      *
-     * <p>Sodium builds one visible-section list per stereo frame from the mono
-     * camera position (this port restores the mono pos across {@code
-     * setupTerrain}; see {@code MixinSodiumWorldRenderer}). Each eye then
-     * renders with a frustum that diverges from that mono cull frustum by (a) an
-     * origin shift of {@code ipd/2} along the camera-right axis and (b) the
-     * convergence shear, which tilts the frustum horizontally by a slope of
-     * {@code (ipd/2)/convergence} (world-lateral blocks per block of view
-     * depth). Sodium's strict section test ({@code OcclusionCuller
-     * .isWithinFrustum} → {@code Viewport.isBoxVisible} with a 9.125-block
-     * padded radius) carries only a 1.125-block slack over the 8-block section
-     * half-extent — enough for the {@code ipd/2} origin shift (~0.03 blocks) but
-     * NOT the shear at distance: at 0.064 m IPD / 4-block convergence the tilt
-     * is 0.008·d, exceeding the slack beyond ~140 blocks, so edge sections only
-     * one eye can see get culled and pop as the camera turns.
+     * <p><b>Full-separation, not half.</b> On 1.21.1 the cull {@code Viewport}
+     * (both its frustum planes and its origin) is baked during the LEFT eye's
+     * {@code renderLevel} — {@code GameRenderer.renderLevel} calls
+     * {@code prepareCullFrustum(camera.getPosition(), modelView,
+     * getProjectionMatrix(...))} while the camera is offset to LEFT and our
+     * convergence-shear {@code ModifyReturnValue} on {@code getProjectionMatrix}
+     * is live ({@code isInWorldPass}, eye = LEFT), and Sodium's
+     * {@code FrustumMixin.sodium$createViewport} copies that vanilla frustum's
+     * {@code intersection} + {@code camX/Y/Z} verbatim. The RIGHT eye's
+     * {@code setupTerrain} is skipped and it reuses LEFT's list, so it diverges
+     * from a LEFT-baked frustum by the FULL eye separation: (a) an origin shift
+     * of {@code ipd} (LEFT→RIGHT), and (b) the convergence shear flipping from
+     * {@code +s} to {@code −s}, i.e. a tilt-slope difference of {@code 2s =
+     * ipd/convergence} (world-lateral blocks per block of view depth). Hence
+     * {@code ipd} and {@code ipd/convergence}, not their halves — the
+     * mono-position restore in {@code MixinSodiumWorldRenderer} only feeds
+     * {@code RenderSectionManager.updateCameraState}, NOT the {@code
+     * OcclusionCuller} frustum test, so it does not re-center the cull frustum.
+     * (Contrast the 26.2/CameraRenderState port, where extraction runs once from
+     * the MONO state outside the per-eye loop and the half-separation applies.)
      *
-     * <p>The margin is the exact worst-case lateral divergence of an eye frustum
-     * from the mono one at that section's camera-relative horizontal distance
-     * ({@code horizontalDist} ≥ view depth, so this is conservative). With
-     * convergence off (parallel-axis) the shear term is zero and {@code ipd/2}
-     * alone covers the origin offset.
+     * <p>Sodium's strict section test ({@code OcclusionCuller.isWithinFrustum} →
+     * {@code Viewport.isBoxVisible} with a 9.125-block padded radius) carries
+     * only a 1.125-block slack over the 8-block section half-extent — enough for
+     * the {@code ipd} origin shift (~0.06 blocks) but NOT the shear at distance:
+     * at 0.064 m IPD / 4-block convergence the tilt is 0.016·d, exceeding the
+     * slack beyond ~66 blocks, so edge sections only one eye can see get culled
+     * and pop as the camera turns.
      *
-     * <p>The {@code ipd/2} (not full {@code ipd}) half-separation is specific to
-     * a MONO-baked cull frustum: each eye sits {@code ±ipd/2} from mono, so the
-     * symmetric expansion covers both. A frustum baked from one eye whose list
-     * the other eye reused would need the full {@code ipd} instead — see
-     * {@code MixinOcclusionCuller} for why this branch is the mono case.
+     * <p>The margin is the exact worst-case lateral divergence of the reused
+     * eye's frustum from the baked one at that section's camera-relative
+     * horizontal distance ({@code horizontalDist} ≥ view depth, so this is
+     * conservative). With convergence off (parallel-axis) the shear term is zero
+     * and {@code ipd} alone covers the origin offset.
      *
      * @param ipd            interpupillary distance in blocks (== meters in MC)
      * @param convergence    convergence distance in blocks; ≤ 0 = parallel-axis
@@ -115,10 +124,9 @@ public final class StereoMath {
      * @return the extra margin in blocks to add to the section half-extent
      */
     public static float cullMargin(float ipd, float convergence, float horizontalDist) {
-        float ipdHalf = ipd * 0.5f;
-        float extra = ipdHalf;
+        float extra = ipd;
         if (convergence > 0f) {
-            extra += (ipdHalf / convergence) * horizontalDist;
+            extra += (ipd / convergence) * horizontalDist;
         }
         return extra;
     }

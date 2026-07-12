@@ -20,12 +20,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *   <li><b>Skip on RIGHT eye</b> (perf): setupTerrain bundles the full
  *       chunk-graph chain. Running once per stereo frame is enough — LEFT's
  *       output (visible-section list, chunk buffers) feeds RIGHT's render.</li>
- *   <li><b>Mono-pos visibility</b>: LEFT runs while {@code Camera.pos} is at
- *       the LEFT eye. Its frustum drops chunks visible only to the RIGHT eye's
- *       IPD-shifted frustum — sky-color gaps in RIGHT where geometry should be.
- *       Restore mono pos for the duration of setupTerrain so the visible-section
- *       list covers both eyes' frusta (IPD ~6cm is three orders of magnitude
- *       smaller than a chunk).</li>
+ *   <li><b>Mono-pos restore</b>: LEFT runs while {@code Camera.pos} is at the
+ *       LEFT eye. This restores the mono position for the duration of
+ *       setupTerrain so Sodium's {@code RenderSectionManager.updateCameraState}
+ *       (BFS start section, incremental graph state, translucency sorting)
+ *       stays eye-agnostic between frames. <b>Note:</b> this does NOT re-center
+ *       the frustum the per-section cull tests against — that {@code Viewport}
+ *       is built from the vanilla cull frustum BEFORE setupTerrain runs, baked
+ *       from the LEFT eye's origin and sheared projection. Both-eye visibility
+ *       coverage is provided by the margin in {@code MixinOcclusionCuller},
+ *       which sizes for the FULL eye separation precisely because the cull
+ *       frustum is LEFT-baked (see that class's javadoc for the bytecode
+ *       trace).</li>
  * </ul>
  *
  * <p>Sodium 0.6.13 confirmed signature:
