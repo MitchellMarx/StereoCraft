@@ -1,9 +1,10 @@
 {
   "stereoscopic.options.group.name": "Stereoscopic",
   "stereoscopic.options.mode.name": "Mode",
-  "stereoscopic.options.mode.tooltip": "Selects the stereoscopic output mode. SBS Half splits the framebuffer left/right at half horizontal resolution per eye, suitable for VR virtual-monitor passthrough and 3D SBS displays.",
+  "stereoscopic.options.mode.tooltip": "Selects the stereoscopic output mode. SBS Half splits the framebuffer left/right at half horizontal resolution per eye, for displays that stretch each half back to full width (3D TVs/monitors, VR virtual-monitor passthrough). SBS Full renders each eye at per-eye (W/2)/H aspect so each half is proportionally correct with no display stretch — for double-wide desktops (e.g. 3840x1080) and full-SBS 3D inputs.",
   "stereoscopic.options.mode.off": "Off",
   "stereoscopic.options.mode.sbs_half": "SBS Half",
+  "stereoscopic.options.mode.sbs_full": "SBS Full",
   "stereoscopic.options.ipd.name": "IPD (meters)",
   "stereoscopic.options.ipd.tooltip": "Interpupillary distance / stereo strength — the horizontal eye separation used to compute per-eye camera offset. Default 0.064 m matches the human-average IPD (real humans are ~55–77 mm). Values above ~77 mm are hyperstereo: exaggerated depth / stronger SBS pop, not anatomically realistic. Max 100 mm.",
   "stereoscopic.options.convergence.name": "Convergence distance",

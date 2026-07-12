@@ -10,6 +10,7 @@
         "minecraft.MixinGlStateManager",
         "minecraft.MixinFramebuffer",
         "minecraft.MixinMouse",
+        "minecraft.MixinWindow",
         "minecraft.MixinScreen",
         "minecraft.MixinCubeMap",
         "minecraft.CameraAccessor",

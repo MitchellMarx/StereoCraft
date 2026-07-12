@@ -54,6 +54,14 @@ public abstract class MixinCubeMap {
         if (!PerEyeRenderer.isProjectionSwapActive()) return cubeMapPerspective;
         boolean isRight = s.getCurrentEye() == StereoState.Eye.RIGHT;
         boolean leftHalf = StereoOptions.INSTANCE.swapEyes ? isRight : !isRight;
+        // SBS_FULL: the panorama is still squished 2:1 into each half by the
+        // scale(0.5) below, and the half is shown as-is (no display stretch),
+        // so — exactly like the world projection — render it at the per-eye
+        // aspect (W/2)/H first (doubling m00) so it comes out proportionally
+        // correct after the squish.
+        if (s.getFrameMode().isFull()) {
+            com.mitchellmarx.stereoscopic.core.StereoMath.applyFullSbsAspect(cubeMapPerspective);
+        }
         return new Matrix4f()
             .translate(leftHalf ? -0.5f : 0.5f, 0f, 0f)
             .scale(0.5f, 1f, 1f)

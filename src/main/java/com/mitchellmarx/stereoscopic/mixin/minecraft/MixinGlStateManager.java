@@ -87,6 +87,19 @@ public abstract class MixinGlStateManager {
         } else {
             leftHalf = (s.getCurrentEye() == StereoState.Eye.LEFT);
         }
+        if (s.getFrameMode().isFull()) {
+            // SBS_FULL: GUI geometry is drawn UNcompressed (half-width layout,
+            // see MixinGameRenderer.perEyeProjection / MixinWindow), so the
+            // vanilla scissor pixels already land in the left half. The
+            // left-half eye passes through unchanged; the other eye only needs
+            // the half-window offset (no width halving). Clamp so the offset
+            // rect stays inside the framebuffer.
+            if (leftHalf) return;
+            int rx = x + fbW / 2;
+            ci.cancel();
+            PerEyeRenderer.scissorRaw(rx, y, Math.max(0, Math.min(w, fbW - rx)), h);
+            return;
+        }
         int halvedW = Math.max(1, w / 2);
         int newX = leftHalf ? (x / 2) : (x / 2 + fbW / 2);
         ci.cancel();

@@ -98,6 +98,32 @@ class StereoMathTest {
     }
 
     @Test
+    void fullSbsAspectDoublesM00AndPreservesVertical() {
+        // Halving the aspect from W/H to (W/2)/H doubles m00 (= f/aspect);
+        // vertical focal m11 must be untouched.
+        Matrix4f wide = new Matrix4f().perspective((float) Math.toRadians(70), 32f / 9f, 0.1f, 1000f);
+        Matrix4f narrow = new Matrix4f().perspective((float) Math.toRadians(70), 16f / 9f, 0.1f, 1000f);
+        float m11 = wide.m11();
+        StereoMath.applyFullSbsAspect(wide);
+        assertMatrixEquals(narrow, wide, EPS);
+        assertEquals(m11, wide.m11(), EPS, "vertical FOV unchanged");
+    }
+
+    @Test
+    void fullSbsAspectThenShearConvergesAtTarget() {
+        // The convergence guarantee must hold for the FULL-mode frustum too:
+        // aspect fix first, then shear, target still lands at NDC x = 0.
+        float dx = -0.032f;
+        float D  = 4.0f;
+        Matrix4f proj = new Matrix4f().perspective((float) Math.toRadians(70), 32f / 9f, 0.1f, 1000f);
+        StereoMath.applyFullSbsAspect(proj);
+        StereoMath.applyConvergenceShear(proj, dx, D);
+        float xClip = proj.m00() * (-dx) + proj.m20() * (-D);
+        float wClip = proj.m23() * (-D) + proj.m33();
+        assertEquals(0f, xClip / wClip, 1e-5f);
+    }
+
+    @Test
     void cullMarginIsHalfIpdAtZeroDistance() {
         // At the camera, only the origin offset (ipd/2) diverges.
         assertEquals(0.032f, StereoMath.cullMargin(0.064f, 4f, 0f), EPS);

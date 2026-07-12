@@ -60,6 +60,24 @@ public final class StereoMath {
     }
 
     /**
+     * Mutates {@code proj} in place for SBS_FULL: halves the projection's
+     * aspect ratio from the vanilla full-window {@code W/H} to the per-eye
+     * {@code (W/2)/H} by doubling {@code m00} ({@code m00 = f/aspect} for a
+     * symmetric perspective — vertical FOV is untouched). The per-eye render
+     * is still squeezed 2:1 into its half of the window (GL_LINEAR blit of the
+     * full scratch into the half eye-rect), so each half carries a
+     * proportionally correct full-aspect image with no display stretch.
+     *
+     * <p>Must be applied BEFORE {@link #applyConvergenceShear} — the shear
+     * post-multiply reads the current {@code m00} ({@code P[0][2] = P[0][0] *
+     * shear}), and convergence geometry has to match the frustum actually
+     * rendered.
+     */
+    public static Matrix4f applyFullSbsAspect(Matrix4f proj) {
+        return proj.m00(proj.m00() * 2f);
+    }
+
+    /**
      * Extra per-section frustum-cull margin, in blocks, so a MONO cull frustum
      * covers BOTH eye frusta (issue #4 — world blocks flickering in SBS).
      *

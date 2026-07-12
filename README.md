@@ -27,7 +27,7 @@ This is the NeoForge sibling of [StereoCraft Fabric](https://github.com/Mitchell
 
 Bind the **Open Stereoscopic Options** key under **Options → Controls → Stereoscopic 3D** (default unbound). Pressing the key opens a screen with:
 
-- **Mode** — `OFF` or `SBS_HALF`. Mode changes trigger an Iris pipeline rebuild on the next frame (one-frame flash with shaders loaded).
+- **Mode** — `OFF`, `SBS_HALF`, or `SBS_FULL`. `SBS_HALF` targets displays that stretch each half back to full width (3D TVs/monitors, VR virtual-monitor passthrough); `SBS_FULL` renders each eye at per-eye `(W/2)/H` aspect so each half is proportionally correct with no display stretch (double-wide desktops, full-SBS 3D inputs). Mode changes trigger an Iris pipeline rebuild on the next frame (one-frame flash with shaders loaded).
 - **IPD** — 55–75 mm, default 64 mm.
 - **Convergence distance** — 0–32 blocks, default 4. 0 = parallel-axis (no shear).
 - **Swap eyes** — flip per-eye assignment for reverse-SBS displays / VR virtual-monitor setups.
@@ -53,7 +53,7 @@ You can also edit `config/stereoscopic-options.json` manually — the format is 
 
 - **`StereoBlur` is not present.** The Fabric mod's `StereoBlur` works around an MC 1.21.6+ regression where `GameRenderer.renderBlur()` routes through `CommandEncoder.createRenderPass` and ignores classic glScissor. MC 1.21.1 still uses the older `PostChain` blur path which respects glScissor, so the workaround isn't needed.
 - **Options page is a standalone screen, not a Sodium tab.** Sodium 0.6 has no third-party options-page API (added in 0.7+). Rather than couple to the modpack-specific `sodiumoptionsapi` add-on, we ship a keybinding-driven standalone screen.
-- **No `SBS_FULL` / `OUDA_FULL` / `OUDA_HALF` modes.** The Angelica mod has these as prototype-debugging cruft; the canonical feature set (Fabric mod's) only ships `OFF` / `SBS_HALF`. This mod matches the canonical set.
+- **No `OUDA_FULL` / `OUDA_HALF` modes.** The Angelica mod has these over-under variants as prototype-debugging cruft; the canonical feature set (Fabric mod's) ships `OFF` / `SBS_HALF` / `SBS_FULL`. This mod matches the canonical set.
 
 ## License
 

@@ -76,6 +76,14 @@ public abstract class MixinGameRenderer {
     private Matrix4f stereoscopic$applyConvergenceShear(Matrix4f proj) {
         StereoState s = StereoState.INSTANCE;
         if (!s.isActive() || !s.isInWorldPass()) return proj;
+        // SBS_FULL: halve the projection aspect (W/H -> (W/2)/H) BEFORE the
+        // shear — the shear post-multiply reads m00, so the aspect fix must
+        // land first (see StereoMath.applyFullSbsAspect). The full-size scratch
+        // is still GL_LINEAR-squished into the half eye-rect, so this renders
+        // an undistorted per-eye view for displays that show each half as-is.
+        if (s.getFrameMode().isFull()) {
+            StereoMath.applyFullSbsAspect(proj);
+        }
         return StereoMath.applyConvergenceShear(proj, s.getEyeOffset(), s.getFrameConvergence());
     }
 
@@ -151,9 +159,20 @@ public abstract class MixinGameRenderer {
      */
     @Unique
     private static Matrix4f stereoscopic$perEyeProjection(Matrix4f originalProj, boolean leftHalf) {
-        // P' = T * S * P_original. Vertices map through P_original to NDC, then
-        // S(0.5) compresses NDC.x by half, then T(±0.5) shifts the compressed
-        // range into [-1, 0] (left half) or [0, +1] (right half).
+        // SBS_FULL: MixinWindow halves the GUI *layout* width while the GUI
+        // ortho (built from Window.getWidth()/getGuiScale(), NOT the halved
+        // getGuiScaledWidth()) stays full-width, so content laid out for
+        // [0 .. guiW/2] already projects into NDC [-1, 0] — the left half — at
+        // 1:1. Draw it UNcompressed: the left-half eye needs no transform, the
+        // other eye just shifts +1 in NDC into [0, +1]. No 0.5 squeeze.
+        if (StereoState.INSTANCE.getFrameMode().isFull()) {
+            return new Matrix4f()
+                .translate(leftHalf ? 0f : 1f, 0f, 0f)
+                .mul(originalProj);
+        }
+        // SBS_HALF: P' = T * S * P_original. Vertices map through P_original to
+        // NDC, then S(0.5) compresses NDC.x by half, then T(±0.5) shifts the
+        // compressed range into [-1, 0] (left half) or [0, +1] (right half).
         return new Matrix4f()
             .translate(leftHalf ? -0.5f : 0.5f, 0f, 0f)
             .scale(0.5f, 1f, 1f)
