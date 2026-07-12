@@ -12,7 +12,7 @@ import java.io.File;
  *
  * <p>Persisted to {@code config/stereoscopic.cfg} via Forge's {@link Configuration}:
  * <ul>
- *   <li>{@link #stereoscopicMode} — Sodium UI tick-box (OFF ↔ SBS_HALF)
+ *   <li>{@link #stereoscopicMode} — Sodium UI cycling control (OFF / SBS_HALF / SBS_FULL)
  *   <li>{@link #stereoIpd} — Sodium UI integer slider in mm, persisted as meters
  *   <li>{@link #stereoConvergence} — Sodium UI integer slider in blocks; off-axis convergence
  *       distance (where each eye's frustum lines up at zero parallax)
@@ -51,7 +51,8 @@ public final class StereoConfig {
     private static void read() {
         final String modeName = config.getString(
             "stereoscopicMode", "general", StereoMode.OFF.name(),
-            "Stereo layout. Values: OFF, SBS_HALF. Default OFF.");
+            "Stereo layout. Values: OFF, SBS_HALF (full-aspect halves for stretch-back 3D TVs), "
+            + "SBS_FULL (per-eye-aspect halves, no stretch). Default OFF.");
         stereoscopicMode = parseEnum(StereoMode.class, modeName, StereoMode.OFF);
 
         stereoIpd = (float) config.get("general", "stereoIpd", 0.064,

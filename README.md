@@ -28,12 +28,10 @@ This is the 1.7.10 sibling of the [Fabric 1.21.11 StereoCraft mod](https://githu
 
 Open the in-game options menu and go to **Video Settings → Sodium → Stereoscopic** (added by our Sodium options-page integration). From there:
 
-- **Mode** — `OFF`, `SBS_FULL`, `SBS_HALF`, `OUDA_FULL`, `OUDA_HALF`. Toggling triggers an Iris pipeline rebuild on the next frame, so the screen may flash briefly.
-- **IPD (mm)** — interpupillary distance, 55–75 mm anthropomorphic range. Default 64 mm.
+- **Mode** — `OFF`, `SBS_HALF`, or `SBS_FULL` (cycles). `SBS_HALF` renders each eye at the full window aspect squeezed 2:1 into its half — for 3D TVs/receivers that stretch each half back to full width. `SBS_FULL` renders each eye at the per-eye `(W/2)/H` aspect presented as-is — for double-wide desktops (e.g. 3840×1080) and full-SBS inputs. Turning stereo on/off triggers an Iris pipeline rebuild on the next frame (brief flash); switching between HALF and FULL does not.
+- **IPD (mm)** — interpupillary distance, 55–100 mm (above ~77 mm is exaggerated hyperstereo). Default 64 mm.
 - **Convergence (blocks)** — off-axis convergence distance. Objects at this depth sit at the screen plane (zero parallax); closer pops out, farther recedes. 0 = parallel-axis (no shear, everything pops out). Default 4.
 - **Swap eyes** — flip which eye-render goes to which physical eye. Toggle if depth looks inverted on your display.
-- **HUD mode** — `DUPLICATE` (per-eye HUD), `STRETCH` (full-width across both eyes), or `HIDE`.
-- **Debug: force eye** — render only LEFT or RIGHT eye full-screen, for debugging per-eye divergence.
 
 Persistent settings live at `config/stereoscopic.cfg` (standard Forge config format). Manual edits round-trip cleanly through the in-game options page.
 

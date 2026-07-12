@@ -56,6 +56,27 @@ public abstract class MixinEntityRenderer_StereoCamera {
     )
     private void stereoscopic$applyOffAxisFrustumShear(float partialTicks, int pass, CallbackInfo ci) {
         if (!StereoState.INSTANCE.isActive()) return;
+
+        // SBS_FULL: narrow the horizontal aspect from the vanilla full-window W/H to the per-eye
+        // (W/2)/H by doubling the projection's m00 (m00 = f/aspect for a symmetric perspective;
+        // vertical FOV is untouched). This runs BEFORE the convergence shear below because the
+        // shear post-multiply reads m00 (P[0][2] = m00 * shear) and must see the corrected value —
+        // the same ordering constraint as StereoMath.applyFullSbsAspect in the Fabric reference.
+        // A post-multiply by diag(2,1,1,1) scales column 0 of the gluPerspective matrix, whose
+        // only non-zero column-0 entry is m00, so it doubles m00 and nothing else. Applies for
+        // both eyes (aspect is per-eye-identical) and regardless of convergence.
+        if (StereoState.INSTANCE.getFrameMode().isFull()) {
+            final FloatBuffer aspect = BufferUtils.createFloatBuffer(16);
+            aspect.put(new float[] {
+                2f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                0f, 0f, 1f, 0f,
+                0f, 0f, 0f, 1f,
+            });
+            aspect.flip();
+            GLStateManager.glMultMatrix(aspect);
+        }
+
         final float dx = StereoState.INSTANCE.getEyeOffset();
         if (dx == 0f) return;
         final float convDist = StereoConfig.stereoConvergence;

@@ -108,20 +108,21 @@ public abstract class MixinEntityRenderer_Stereo {
         final int fullW = mc.displayWidth;
         final int fullH = mc.displayHeight;
 
-        final boolean sbs = mode.isSideBySide();
-        final boolean half = mode.isHalf();
 
-        final int eyeW = sbs ? (half ? fullW / 2 : fullW) : fullW;
-        final int eyeH = sbs ? fullH               : (half ? fullH / 2 : fullH);
+        // Both SBS_HALF and SBS_FULL split the window left/right — each eye owns a fullW/2 × fullH
+        // half. FULL differs only in per-eye projection aspect (MixinEntityRenderer_StereoCamera)
+        // and GUI layout width (MixinScaledResolution_StereoFull), never in these viewport rects.
+        final int eyeW = fullW / 2;
+        final int eyeH = fullH;
 
         // Swap-eyes flips which screen half each logical eye blits into. Paired with the
         // negated IPD in StereoState.getEyeOffset so reversed-SBS displays / VR passthrough
         // virtual monitors stay self-consistent.
         final boolean swap = StereoConfig.stereoSwapEyes;
-        final int leftX  = swap ? (sbs ? eyeW : 0)            : 0;
-        final int leftY  = swap ? 0                           : (sbs ? 0 : fullH - eyeH);
-        final int rightX = swap ? 0                           : (sbs ? eyeW : 0);
-        final int rightY = swap ? (sbs ? 0 : fullH - eyeH)    : 0;
+        final int leftX  = swap ? eyeW : 0;
+        final int leftY  = 0;
+        final int rightX = swap ? 0    : eyeW;
+        final int rightY = 0;
 
         // Capture the REAL main FB reference before activating the scratch substitution.
         // After setActive(true), Minecraft.getFramebuffer() returns the scratch — we need
@@ -196,17 +197,18 @@ public abstract class MixinEntityRenderer_Stereo {
         final Minecraft mc = Minecraft.getMinecraft();
         final int fullW = mc.displayWidth;
         final int fullH = mc.displayHeight;
-        final boolean sbs = mode.isSideBySide();
-        final boolean half = mode.isHalf();
 
-        final int eyeW = sbs ? (half ? fullW / 2 : fullW) : fullW;
-        final int eyeH = sbs ? fullH               : (half ? fullH / 2 : fullH);
+        // Both SBS_HALF and SBS_FULL split the window left/right — each eye owns a fullW/2 × fullH
+        // half. FULL differs only in per-eye projection aspect (MixinEntityRenderer_StereoCamera)
+        // and GUI layout width (MixinScaledResolution_StereoFull), never in these viewport rects.
+        final int eyeW = fullW / 2;
+        final int eyeH = fullH;
 
         final boolean swap = StereoConfig.stereoSwapEyes;
-        final int leftX  = swap ? (sbs ? eyeW : 0)            : 0;
-        final int leftY  = swap ? 0                           : (sbs ? 0 : fullH - eyeH);
-        final int rightX = swap ? 0                           : (sbs ? eyeW : 0);
-        final int rightY = swap ? (sbs ? 0 : fullH - eyeH)    : 0;
+        final int leftX  = swap ? eyeW : 0;
+        final int leftY  = 0;
+        final int rightX = swap ? 0    : eyeW;
+        final int rightY = 0;
 
         GL11.glViewport(leftX, leftY, eyeW, eyeH);
         StereoState.INSTANCE.enterGuiPass(leftX, leftY, eyeW, eyeH);
@@ -251,15 +253,16 @@ public abstract class MixinEntityRenderer_Stereo {
         final Minecraft mc = Minecraft.getMinecraft();
         final int fullW = mc.displayWidth;
         final int fullH = mc.displayHeight;
-        final boolean sbs = mode.isSideBySide();
-        final boolean half = mode.isHalf();
-        final int eyeW = sbs ? (half ? fullW / 2 : fullW) : fullW;
-        final int eyeH = sbs ? fullH               : (half ? fullH / 2 : fullH);
+        // Both SBS_HALF and SBS_FULL split the window left/right — each eye owns a fullW/2 × fullH
+        // half. FULL differs only in per-eye projection aspect (MixinEntityRenderer_StereoCamera)
+        // and GUI layout width (MixinScaledResolution_StereoFull), never in these viewport rects.
+        final int eyeW = fullW / 2;
+        final int eyeH = fullH;
         final boolean swap = StereoConfig.stereoSwapEyes;
-        final int leftX  = swap ? (sbs ? eyeW : 0)            : 0;
-        final int leftY  = swap ? 0                           : (sbs ? 0 : fullH - eyeH);
-        final int rightX = swap ? 0                           : (sbs ? eyeW : 0);
-        final int rightY = swap ? (sbs ? 0 : fullH - eyeH)    : 0;
+        final int leftX  = swap ? eyeW : 0;
+        final int leftY  = 0;
+        final int rightX = swap ? 0    : eyeW;
+        final int rightY = 0;
 
         final Framebuffer realMainFb = mc.getFramebuffer();
         PerEyeScratchFb.ensureSized(fullW, fullH);
@@ -316,8 +319,10 @@ public abstract class MixinEntityRenderer_Stereo {
     )
     private boolean stereoscopic$stereoPostEvent(EventBus bus, Event event) {
         final StereoMode mode = StereoState.INSTANCE.getFrameMode();
-        final boolean stereoActive = mode != null && mode.isActive()
-            && mode.isSideBySide() && mode.isHalf();
+        // Both SBS modes need the overlay posted once per eye-half; FULL's per-eye 1:1 layout is
+        // handled by the halved ScaledResolution (MixinScaledResolution_StereoFull), same as the
+        // rest of the GUI.
+        final boolean stereoActive = mode != null && mode.isActive() && mode.isSideBySide();
         if (!stereoActive) {
             return bus.post(event);
         }

@@ -28,6 +28,7 @@
     "minecraft.MixinMinecraft_AsyncCursor",
     "minecraft.MixinMinecraft_StereoAchievement",
     "minecraft.MixinMinecraft_StereoScratchFb",
+    "minecraft.MixinScaledResolution_StereoFull",
     "sodium.MixinRenderGlobal_StereoChunkSkip",
     "sodium.MixinSodiumGameOptionPages_StereoToggle",
     "sodium.MixinViewport"

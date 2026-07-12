@@ -9,6 +9,7 @@ import me.jellysquid.mods.sodium.client.gui.options.OptionGroup;
 import me.jellysquid.mods.sodium.client.gui.options.OptionImpact;
 import me.jellysquid.mods.sodium.client.gui.options.OptionImpl;
 import me.jellysquid.mods.sodium.client.gui.options.OptionPage;
+import me.jellysquid.mods.sodium.client.gui.options.control.CyclingControl;
 import me.jellysquid.mods.sodium.client.gui.options.control.SliderControl;
 import me.jellysquid.mods.sodium.client.gui.options.control.TickBoxControl;
 import me.jellysquid.mods.sodium.client.gui.options.storage.AngelicaOptionsStorage;
@@ -53,14 +54,24 @@ public abstract class MixinSodiumGameOptionPages_StereoToggle {
         final AngelicaOptionsStorage angelicaOpts = new AngelicaOptionsStorage();
 
         merged.add(OptionGroup.createBuilder()
-            .add(OptionImpl.createBuilder(boolean.class, angelicaOpts)
+            .add(OptionImpl.createBuilder(StereoMode.class, angelicaOpts)
                 .setName("Stereoscopic SBS (Side-by-Side)")
-                .setTooltip("Splits the screen into two eye views for VR headset use via Virtual Desktop / Steam Link. Roughly halves framerate.")
-                .setControl(TickBoxControl::new)
+                .setTooltip("Splits the screen into two eye views for VR headset use via Virtual Desktop / Steam Link. Roughly halves framerate. "
+                    + "SBS Half: each eye at full aspect, squeezed into its half (3D TVs / receivers that stretch each half back to full width). "
+                    + "SBS Full: each eye at half aspect, presented as-is (double-wide desktops like 3840x1080, full-SBS inputs).")
+                .setControl(opt -> new CyclingControl<>(opt, StereoMode.class,
+                    new String[] { "Off", "SBS Half", "SBS Full" }))
                 .setBinding(
                     (opts, value) -> {
-                        final StereoMode newMode = value ? StereoMode.SBS_HALF : StereoMode.OFF;
-                        if (StereoConfig.stereoscopicMode == newMode) return;
+                        final StereoMode newMode = value != null ? value : StereoMode.OFF;
+                        final StereoMode oldMode = StereoConfig.stereoscopicMode;
+                        if (oldMode == newMode) return;
+                        // Only an OFF <-> active transition changes Iris's per-eye RenderTargets
+                        // eye count (both SBS modes are 2-eye), so only then must the pipeline be
+                        // rebuilt. HALF <-> FULL only changes projection aspect + GUI layout width,
+                        // which the next frame picks up on its own — no rebuild, no shader flash.
+                        final boolean activeChanged =
+                            (oldMode != null && oldMode.isActive()) != newMode.isActive();
                         StereoConfig.stereoscopicMode = newMode;
                         StereoConfig.save();
                         // Force the StereoState frame-cache to pick up the new config NOW. Without
@@ -68,7 +79,8 @@ public abstract class MixinSodiumGameOptionPages_StereoToggle {
                         // the last frame and the pipeline rebuild below would allocate the wrong
                         // number of per-eye textures.
                         StereoState.INSTANCE.beginFrame();
-                        if (com.gtnewhorizons.angelica.config.AngelicaConfig.enableIris
+                        if (activeChanged
+                            && com.gtnewhorizons.angelica.config.AngelicaConfig.enableIris
                             && Minecraft.getMinecraft().theWorld != null) {
                             // Iris RenderTargets.eyeCount is captured at pipeline init, so we have
                             // to drop the pipeline and rebuild it for the new eye count to take
@@ -82,7 +94,7 @@ public abstract class MixinSodiumGameOptionPages_StereoToggle {
                         }
                     },
                     opts -> StereoConfig.stereoscopicMode != null
-                        && StereoConfig.stereoscopicMode != StereoMode.OFF)
+                        ? StereoConfig.stereoscopicMode : StereoMode.OFF)
                 .setImpact(OptionImpact.HIGH)
                 .build())
             .add(OptionImpl.createBuilder(int.class, angelicaOpts)
