@@ -39,6 +39,23 @@ import org.spongepowered.asm.mixin.injection.At;
  * the cull frustum between the eyes (handling the origin offset symmetrically),
  * and this margin covers the shear divergence the pad cannot.
  *
+ * <p><b>Why the margin uses IPD/2 and not the full IPD.</b> The correct
+ * constant depends on which camera the cull frustum is baked from. Sodium builds
+ * the {@code Viewport}/frustum inside {@code setupTerrain}'s body, i.e. between
+ * {@link MixinSodiumWorldRenderer}'s HEAD inject (which restores the MONO camera
+ * position) and its RETURN inject (which restores the eye position) — so on this
+ * branch the frustum is baked from the MONO camera even though extraction lives
+ * inside the per-eye loop. Each eye's real render frustum then diverges from
+ * that mono cull frustum by only {@code IPD/2} of origin offset (plus half the
+ * shear), and the symmetric section-test expansion covers both eyes at once.
+ * (If a branch instead baked the cull frustum from ONE eye's position and had
+ * the other eye reuse the list — extraction inside the per-eye loop with no
+ * mono restore — the reused eye would diverge by the FULL {@code IPD} and the
+ * margin would need {@code IPD + (IPD/convergence)·dist}. That is NOT this
+ * branch: the RIGHT-eye {@code setupTerrain} is skipped and LEFT's runs from the
+ * restored mono position, so {@link StereoMath#cullMargin} uses the {@code IPD/2}
+ * form.)
+ *
  * <p>Gated on live {@link StereoOptions} rather than the frame snapshot so the
  * predicate never depends on when the per-frame state is armed. When stereo is
  * off the wrap is a single enum check and a straight pass-through.

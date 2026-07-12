@@ -102,6 +102,12 @@ public final class StereoMath {
      * convergence off (parallel-axis) the shear term is zero and {@code ipd/2}
      * alone covers the origin offset.
      *
+     * <p>The {@code ipd/2} (not full {@code ipd}) half-separation is specific to
+     * a MONO-baked cull frustum: each eye sits {@code ±ipd/2} from mono, so the
+     * symmetric expansion covers both. A frustum baked from one eye whose list
+     * the other eye reused would need the full {@code ipd} instead — see
+     * {@code MixinOcclusionCuller} for why this branch is the mono case.
+     *
      * @param ipd            interpupillary distance in blocks (== meters in MC)
      * @param convergence    convergence distance in blocks; ≤ 0 = parallel-axis
      * @param horizontalDist camera-relative horizontal distance to the section,
