@@ -4,6 +4,34 @@ plugins {
     id("com.gtnewhorizons.gtnhconvention")
 }
 
+// --- False-dirty version fix for linked git worktrees ---
+// gtnhgradle's GitVersionModule derives the version via the palantir
+// git-version plugin, whose JGit backend cannot read a linked worktree's
+// index (this repo checks out branches as worktrees under ../..) and stamps
+// a provably clean tree as dirty. Trust real git: when `git status
+// --porcelain` is empty, strip the false dirty suffix so release jars from
+// a worktree aren't mislabeled. A genuinely dirty tree keeps its suffix.
+run {
+    val v = project.version.toString()
+    if (v.contains("dirty")) {
+        val porcelain = providers.exec {
+            commandLine("git", "status", "--porcelain")
+            workingDir(projectDir)
+        }.standardOutput.asText.get()
+        if (porcelain.isBlank()) {
+            val cleaned = v.replace(Regex("[.+-]dirty"), "")
+            project.version = cleaned
+            // The plugin wires archive names and the generated Tags class to
+            // its OWN version provider (not project.version), so rewire the
+            // downstream consumers explicitly.
+            tasks.withType<org.gradle.api.tasks.bundling.AbstractArchiveTask>().configureEach {
+                archiveVersion.set(cleaned)
+            }
+            logger.lifecycle("Version: stripped false '-dirty' (JGit worktree misdetection) -> $cleaned")
+        }
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
 }
