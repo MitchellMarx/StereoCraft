@@ -10,6 +10,14 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 
+import net.irisshaders.iris.Iris;
+import net.irisshaders.iris.config.IrisConfig;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -62,6 +70,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
             Shot par = shot(context, "half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false);
             Shot parSwap = shot(context, "half_parallel_swap", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, true);
             Shot full = shot(context, "full_conv4", StereoMode.SBS_FULL, IPD, CONV, false);
+            checkEyesIdentical(context, "half_ipd0");
 
             set(context, StereoMode.SBS_HALF, IPD, CONV, false);
             context.getInput().resizeWindow(1000, 560);
@@ -71,6 +80,25 @@ public class StereoClientGameTest implements FabricClientGameTest {
 
             set(context, StereoMode.OFF, IPD, CONV, false);
             context.waitTicks(5);
+
+            // Diagnostic: -Dstereoscopic.test.bisect="tag=OPT=V,OPT=V;tag2=..." runs
+            // only these shader-option variants (to localise a failing feature).
+            String bisect = System.getProperty("stereoscopic.test.bisect");
+            if (bisect != null && !bisect.isBlank()) {
+                for (String variant : bisect.split(";")) {
+                    String[] kv = variant.split("=", 2);
+                    shaderPass(context, "bisect_" + kv[0], kv.length > 1 ? kv[1].replace(',', '\n') + "\n" : "");
+                }
+            } else {
+                shaderPass(context, "shaders", "");
+                shaderPass(context, "shaders_noTAA", "TAA_DEFINE=0\n");
+            }
+
+            // After rendering with shaders, every target class is loaded.
+            Path gameDir = context.computeOnClient(mc -> mc.runDirectory.toPath());
+            for (String f : StereoMixinAudit.audit(gameDir, "stereoscopic.mixins.json", "stereoscopic-iris.mixins.json")) fail("mixin: " + f);
+            log("mixin audit: %d injectors/accessors verified", StereoMixinAudit.verified);
+            if (StereoMixinAudit.verified < 20) fail("mixin audit verified only " + StereoMixinAudit.verified + " injectors — audit broken?");
 
             checkPresence(half, halfSwap, par, parSwap, full, resized);
             checkSwapMirrors(half, halfSwap);
@@ -85,7 +113,117 @@ public class StereoClientGameTest implements FabricClientGameTest {
         Stereoscopic.LOG.info("[stereo-test] ALL CHECKS PASSED");
     }
 
+    /**
+     * Same stereo checks with an Iris shader pack active (entities/terrain go
+     * through Iris gbuffer programs and the per-eye Iris uniform hooks).
+     * Pack path from -Dstereoscopic.test.shaderpack; logged as SKIPPED if absent.
+     */
+    private void shaderPass(ClientGameTestContext context, String tag, String packOptions) {
+        String packPath = System.getProperty("stereoscopic.test.shaderpack");
+        if (packPath == null || !Files.isRegularFile(Path.of(packPath))) {
+            log("shaders: SKIPPED (no -Dstereoscopic.test.shaderpack)");
+            return;
+        }
+        Path src = Path.of(packPath);
+        String name = src.getFileName().toString();
+        context.runOnClient(mc -> {
+            try {
+                Path dir = mc.runDirectory.toPath().resolve("shaderpacks");
+                Files.createDirectories(dir);
+                Files.copy(src, dir.resolve(name), StandardCopyOption.REPLACE_EXISTING);
+                Files.writeString(dir.resolve(name + ".txt"), packOptions); // Iris per-pack options
+                IrisConfig cfg = Iris.getIrisConfig();
+                cfg.setShaderPackName(name);
+                cfg.setShadersEnabled(true);
+                cfg.save();
+                Iris.reload();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        context.waitTicks(100); // pack compile + pipeline build
+        log("%s: %s [%s] active=%s", tag, name, packOptions.trim(), context.computeOnClient(mc -> Iris.getCurrentPack().isPresent()));
+        Shot half = shot(context, tag + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
+        Shot par = shot(context, tag + "_half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false);
+        checkEyesIdentical(context, tag + "_half_ipd0");
+        if (Boolean.getBoolean("stereoscopic.test.probeTaa")) probeTaaHistory(context, tag);
+        set(context, StereoMode.OFF, IPD, CONV, false);
+        context.runOnClient(mc -> {
+            try {
+                Iris.getIrisConfig().setShadersEnabled(false);
+                Iris.getIrisConfig().save();
+                Iris.reload();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        context.waitTicks(20);
+        checkPresence(half, par);
+        checkParallel(par);
+        checkConvergenceConsistent(half, par);
+    }
+
+    /** DIAGNOSTIC: compare LEFT/RIGHT bank colortex2 (Complementary TAA history). */
+    private void probeTaaHistory(ClientGameTestContext context, String tag) {
+        set(context, StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false);
+        context.waitTicks(20);
+        context.runOnClient(mc -> {
+            try {
+                Object pipe = Iris.getPipelineManager().getPipelineNullable();
+                java.lang.reflect.Field f = pipe.getClass().getDeclaredField("renderTargets");
+                f.setAccessible(true);
+                net.irisshaders.iris.targets.RenderTargets rt = (net.irisshaders.iris.targets.RenderTargets) f.get(pipe);
+                int prev = com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks.getActiveEye();
+                com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks.setActiveEye(0);
+                net.irisshaders.iris.targets.RenderTarget l = rt.get(2);
+                com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks.setActiveEye(1);
+                net.irisshaders.iris.targets.RenderTarget r = rt.get(2);
+                com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks.setActiveEye(prev);
+                int w = l.getWidth(), h = l.getHeight();
+                float[] lm = tex(l.getMainTexture(), w, h), la = tex(l.getAltTexture(), w, h);
+                float[] rm = tex(r.getMainTexture(), w, h), ra = tex(r.getAltTexture(), w, h);
+                log("%s TAA probe: L main/alt=%d/%d R main/alt=%d/%d %dx%d", tag, l.getMainTexture(), l.getAltTexture(), r.getMainTexture(), r.getAltTexture(), w, h);
+                log("%s TAA probe: |Lmain-Rmain|=%.5f |Lalt-Ralt|=%.5f |Lmain-Lalt|=%.5f |Rmain-Ralt|=%.5f |Lmain-Ralt|=%.5f |Rmain-Lalt|=%.5f",
+                    tag, mad(lm, rm), mad(la, ra), mad(lm, la), mad(rm, ra), mad(lm, ra), mad(rm, la));
+            } catch (Exception e) {
+                log("%s TAA probe failed: %s", tag, e);
+            }
+        });
+    }
+
+    private static float[] tex(int id, int w, int h) {
+        float[] px = new float[w * h * 4];
+        org.lwjgl.opengl.GL45.glGetTextureImage(id, 0, org.lwjgl.opengl.GL11.GL_RGBA, org.lwjgl.opengl.GL11.GL_FLOAT, px);
+        return px;
+    }
+
+    private static double mad(float[] a, float[] b) {
+        double s = 0;
+        for (int i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+        return s / a.length;
+    }
+
     // --- checks -------------------------------------------------------------
+
+    /**
+     * At ~zero IPD (parallel) both eyes must render the same image: catches
+     * one-eye-only artifacts (stale per-eye history/targets, LEFT-consumed
+     * per-frame state, wrong-eye texture routing).
+     */
+    private void checkEyesIdentical(ClientGameTestContext context, String name) {
+        set(context, StereoMode.SBS_HALF, 0.0005f, 0f, false);
+        context.waitTicks(10);
+        Shot s = StereoMetrics.measure(name, context.takeScreenshot(name));
+        double whole = StereoMetrics.asymmetry(s);
+        log("%s: eye asymmetry %.3f%% of pixels", name, whole * 100);
+        if (whole > 0.005) fail(String.format("%s: eyes differ at zero IPD (%.2f%% of pixels) — one-eye artifact", name, whole * 100));
+        for (Marker m : Marker.values()) {
+            double a = StereoMetrics.regionAsymmetry(s, m);
+            if (Double.isNaN(a)) { fail(name + ": " + m + " missing"); continue; }
+            log("%s: %s region asymmetry %.2f%%", name, m, a * 100);
+            if (a > 0.03) fail(String.format("%s: %s renders differently per eye at zero IPD (%.1f%% of its pixels) — one-eye artifact", name, m, a * 100));
+        }
+    }
 
     private void checkPresence(Shot... shots) {
         for (Shot s : shots) {
@@ -182,15 +320,25 @@ public class StereoClientGameTest implements FabricClientGameTest {
         Stereoscopic.LOG.info("[stereo-test] " + String.format(fmt, args));
     }
 
+    /**
+     * Applies options the way the in-game options page does: a mode change
+     * goes through StereoOptionsPage.applyModeChange's sequence (assign, Iris
+     * pipeline rebuild so the per-eye banks match, GUI re-layout). Waits for
+     * the rebuild when the mode changed.
+     */
     private static void set(ClientGameTestContext context, StereoMode mode, float ipd, float conv, boolean swap) {
-        context.runOnClient(mc -> {
+        boolean changed = context.computeOnClient(mc -> {
             StereoOptions o = StereoOptions.INSTANCE;
-            o.mode = mode;
             o.ipd = ipd;
             o.convergence = conv;
             o.swapEyes = swap;
+            if (o.mode == mode) return false;
+            o.mode = mode;
+            com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks.rebuildPipelineForStereoToggle();
             mc.onResolutionChanged();
+            return true;
         });
+        if (changed) context.waitTicks(60);
     }
 
     private static Shot shot(ClientGameTestContext context, String name, StereoMode mode, float ipd, float conv, boolean swap) {

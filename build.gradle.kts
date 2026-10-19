@@ -28,6 +28,12 @@ dependencies {
     modImplementation("maven.modrinth:sodium:${project.property("sodium_version")}")
     modCompileOnly("maven.modrinth:iris:${project.property("iris_version")}")
     modRuntimeOnly("maven.modrinth:iris:${project.property("iris_version")}")
+    // Iris's jar-in-jar libraries aren't put on the remapping dev runtime
+    // classpath; without them Iris can't load a shader pack in runClient /
+    // the gametest's shader pass (ClassNotFoundException org.anarres.cpp.*).
+    runtimeOnly("org.anarres:jcpp:1.4.14")
+    runtimeOnly("io.github.douira:glsl-transformer:3.0.0-pre3")
+    runtimeOnly("org.antlr:antlr4-runtime:4.13.1")
 
     modCompileOnly("maven.modrinth:voxy:${project.property("voxy_version")}")
 
@@ -47,6 +53,16 @@ fabricApi {
         enableClientGameTests = true
         eula = true
     }
+}
+tasks.matching { it.name == "runClientGameTest" }.configureEach {
+    // Shader pass of the stereo gametest (skipped if the pack is absent).
+    (this as JavaExec).systemProperty("stereoscopic.test.shaderpack",
+        (project.findProperty("stereoscopic.testShaderpack") as String?)
+            ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.1.2/shaderpacks/ComplementaryReimagined_r5.9.3.zip")
+    (project.findProperty("stereoscopic.testBisect") as String?)?.let { systemProperty("stereoscopic.test.bisect", it) }
+    // StereoMixinAudit reads the transformed classes to prove every injector injected.
+    systemProperty("mixin.debug.export", "true")
+    if (project.hasProperty("stereoscopic.probeTaa")) systemProperty("stereoscopic.test.probeTaa", "true")
 }
 
 loom {
