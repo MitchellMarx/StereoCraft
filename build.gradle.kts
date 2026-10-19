@@ -55,6 +55,18 @@ fabricApi {
         eula = true
     }
 }
+dependencies {
+    // Gametest's LOD passes (Distant Horizons / Voxy terrain beyond vanilla
+    // render distance); -Pstereoscopic.noDh / -Pstereoscopic.noVoxy run without.
+    "gametestCompileOnly"("maven.modrinth:distanthorizons:${project.property("dh_version")}")
+    "gametestCompileOnly"("maven.modrinth:voxy:${project.property("voxy_version")}")
+    if (!project.hasProperty("stereoscopic.noDh")) {
+        "gametestRuntimeOnly"("maven.modrinth:distanthorizons:${project.property("dh_version")}")
+    }
+    if (!project.hasProperty("stereoscopic.noVoxy")) {
+        "gametestRuntimeOnly"("maven.modrinth:voxy:${project.property("voxy_test_version")}")
+    }
+}
 tasks.matching { it.name == "runClientGameTest" }.configureEach {
     // Shader pass of the stereo gametest (skipped if the pack is absent).
     (this as JavaExec).systemProperty("stereoscopic.test.shaderpack",
@@ -63,6 +75,8 @@ tasks.matching { it.name == "runClientGameTest" }.configureEach {
     (project.findProperty("stereoscopic.testBisect") as String?)?.let { systemProperty("stereoscopic.test.bisect", it) }
     // StereoMixinAudit reads the transformed classes to prove every injector injected.
     systemProperty("mixin.debug.export", "true")
+    // A loader error (e.g. incompatible test mods) exits instead of waiting on an error window.
+    systemProperty("fabric.noGui", "true")
     if (project.hasProperty("stereoscopic.probeTaa")) systemProperty("stereoscopic.test.probeTaa", "true")
 }
 

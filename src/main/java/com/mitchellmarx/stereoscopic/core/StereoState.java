@@ -31,6 +31,14 @@ public final class StereoState {
      */
     private Vec3 frameMonoCameraPos;
 
+    /**
+     * Current eye's camera position minus {@link #frameMonoCameraPos}, set by
+     * MixinGameRenderer for each eye. For geometry baked camera-relative
+     * against the mono camera at extraction (particles), which must subtract
+     * it per eye. Zero outside the per-eye world wrap.
+     */
+    private Vec3 eyeCameraOffset = Vec3.ZERO;
+
     private StereoState() {}
 
     /** From MixinGameRenderer's HEAD inject on render(). Snapshots options
@@ -52,6 +60,7 @@ public final class StereoState {
         this.inWorldPass = false;
         this.inGuiPass = false;
         this.frameMonoCameraPos = null;
+        this.eyeCameraOffset = Vec3.ZERO;
     }
 
     public void setEye(Eye eye) { this.currentEye = eye; }
@@ -85,6 +94,9 @@ public final class StereoState {
 
     public Vec3 getFrameMonoCameraPos() { return frameMonoCameraPos; }
     public void setFrameMonoCameraPos(Vec3 pos) { this.frameMonoCameraPos = pos; }
+
+    public Vec3 getEyeCameraOffset() { return eyeCameraOffset; }
+    public void setEyeCameraOffset(Vec3 offset) { this.eyeCameraOffset = offset; }
 
     /**
      * -ipd/2 LEFT, +ipd/2 RIGHT, 0 MONO — vanilla 1.21 convention. LEFT eye's

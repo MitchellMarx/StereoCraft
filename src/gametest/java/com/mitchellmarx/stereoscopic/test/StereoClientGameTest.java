@@ -5,10 +5,14 @@ import com.mitchellmarx.stereoscopic.core.StereoMode;
 import com.mitchellmarx.stereoscopic.core.StereoOptions;
 import com.mitchellmarx.stereoscopic.test.StereoMetrics.Marker;
 import com.mitchellmarx.stereoscopic.test.StereoMetrics.Shot;
+import com.seibel.distanthorizons.api.DhApi;
+import me.cortex.voxy.client.config.VoxyConfig;
+import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.fabricmc.loader.api.FabricLoader;
 
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.config.IrisConfig;
@@ -19,7 +23,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Automated stereo correctness test. Builds a fixed scene (wool pillars =
@@ -44,12 +51,35 @@ public class StereoClientGameTest implements FabricClientGameTest {
     private static final float CONV = 4f;
     private static final float PARALLEL_IPD = 0.1f;
 
+    private static final EnumSet<Marker> TERRAIN = EnumSet.of(Marker.RED, Marker.BLUE, Marker.YELLOW);
+
+    /** Forward distance (blocks) from the eye to each marker's visible face. */
+    private static final Map<Marker, Double> NEAR_DEPTH = Map.of(
+        Marker.RED, 5.5, Marker.BLUE, 11.5, Marker.YELLOW, 29.5, Marker.SHEEP, 7.6, Marker.PARTICLE, 19.5);
+    private static final String NEAR_PARTICLE = "-3 -57.5 20";
+
+    /**
+     * LOD scene (behind the start position, viewed facing -Z): pillars 70-110
+     * blocks away, beyond the LOD pass's vanilla render distance, so only the
+     * LOD mod draws them; a second sheep and the particle stay vanilla.
+     */
+    private static final Map<Marker, Double> LOD_DEPTH = Map.of(
+        Marker.RED, 69.5, Marker.BLUE, 89.5, Marker.YELLOW, 109.5, Marker.SHEEP, 20.55, Marker.PARTICLE, 17.0);
+    private static final String LOD_PARTICLE = "4 -57 -16.5";
+    private static final float LOD_PARALLEL_IPD = 1.5f;
+    private static final int LOD_RENDER_DISTANCE = 3;
+
     private final List<String> failures = new ArrayList<>();
+    private TestServerContext server;
+    // Active scene: switched by lodPass.
+    private Map<Marker, Double> depth = NEAR_DEPTH;
+    private String particleAt = NEAR_PARTICLE;
+    private float parallelIpd = PARALLEL_IPD;
 
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext sp = context.worldBuilder().create()) {
-            TestServerContext server = sp.getServer();
+            server = sp.getServer();
             // Superflat: surface at y=-61, player feet at y=-60. Camera faces +Z.
             // Markers stay within the narrower SBS_FULL per-eye FOV.
             server.runCommand("time set noon");
@@ -59,6 +89,15 @@ public class StereoClientGameTest implements FabricClientGameTest {
             server.runCommand("fill 0 -60 12 0 -55 12 blue_wool");    // mid
             server.runCommand("fill 5 -60 30 5 -52 30 yellow_wool");  // far
             server.runCommand("summon minecraft:sheep 2.5 -60 8.5 {NoAI:1b,Silent:1b,Color:2b,Rotation:[90f,0f]}");
+            // LOD scene, behind the camera until lodPass turns around. Its
+            // chunks (to z -112) are past the spawn area: forceload them.
+            server.runCommand("forceload add -12 -112 13 -1");
+            context.waitTicks(40);
+            server.runCommand("fill -12 -60 -1 13 -50 -112 air");
+            server.runCommand("fill -12 -60 -70 -7 -51 -70 red_wool");
+            server.runCommand("fill -2 -60 -90 3 -51 -90 blue_wool");
+            server.runCommand("fill 8 -60 -110 13 -51 -110 yellow_wool");
+            server.runCommand("summon minecraft:sheep -4.5 -60 -20.5 {NoAI:1b,Silent:1b,Color:2b,Rotation:[90f,0f]}");
             server.runCommand("tp @p 0.5 -60 0.5 0 10");
             StereoTestCompat.waitForChunksRender(sp);
             context.getInput().pressKey(o -> o.keyToggleGui); // hide HUD (F1)
@@ -75,11 +114,15 @@ public class StereoClientGameTest implements FabricClientGameTest {
             set(context, StereoMode.SBS_HALF, IPD, CONV, false);
             context.getInput().resizeWindow(1000, 560);
             context.waitTicks(20);
-            Shot resized = StereoMetrics.measure("half_conv4_after_resize",
-                context.takeScreenshot("half_conv4_after_resize"));
+            Shot resized = capture(context, "half_conv4_after_resize");
 
             set(context, StereoMode.OFF, IPD, CONV, false);
             context.waitTicks(5);
+
+            if (FabricLoader.getInstance().isModLoaded("distanthorizons")) lodPass(context, sp, "dh");
+            else log("dh: SKIPPED (Distant Horizons not loaded)");
+            if (FabricLoader.getInstance().isModLoaded("voxy")) lodPass(context, sp, "voxy");
+            else log("voxy: SKIPPED (Voxy not loaded)");
 
             // Diagnostic: -Dstereoscopic.test.bisect="tag=OPT=V,OPT=V;tag2=..." runs
             // only these shader-option variants (to localise a failing feature).
@@ -96,7 +139,9 @@ public class StereoClientGameTest implements FabricClientGameTest {
 
             // After rendering with shaders, every target class is loaded.
             Path gameDir = context.computeOnClient(mc -> mc.gameDirectory.toPath());
-            for (String f : StereoMixinAudit.audit(gameDir, "stereoscopic.mixins.json", "stereoscopic-iris.mixins.json")) fail("mixin: " + f);
+            List<String> configs = new ArrayList<>(List.of("stereoscopic.mixins.json", "stereoscopic-iris.mixins.json"));
+            if (FabricLoader.getInstance().isModLoaded("voxy")) configs.add("stereoscopic-voxy.mixins.json");
+            for (String f : StereoMixinAudit.audit(gameDir, configs.toArray(String[]::new))) fail("mixin: " + f);
             log("mixin audit: %d injectors/accessors verified", StereoMixinAudit.verified);
             if (StereoMixinAudit.verified < 20) fail("mixin audit verified only " + StereoMixinAudit.verified + " injectors — audit broken?");
 
@@ -104,6 +149,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
             checkSwapMirrors(half, halfSwap);
             checkSwapMirrors(par, parSwap);
             checkParallel(par);
+            checkDepthScaling(par);
             checkConvergenceConsistent(half, par);
             checkAspect(mono, half, full);
         }
@@ -143,11 +189,127 @@ public class StereoClientGameTest implements FabricClientGameTest {
         });
         context.waitTicks(100); // pack compile + pipeline build
         log("%s: %s [%s] active=%s", tag, name, packOptions.trim(), context.computeOnClient(mc -> Iris.getCurrentPack().isPresent()));
+        if (depth == LOD_DEPTH) {
+            // A pack without support for this LOD mod doesn't draw its terrain
+            // even in mono — not a stereo defect, so skip rather than fail.
+            Shot mono = shot(context, tag + "_mono", StereoMode.OFF, IPD, CONV, false);
+            List<Marker> absent = TERRAIN.stream().filter(m -> mono.whole().get(m) == null).toList();
+            if (!absent.isEmpty()) {
+                log("%s: SKIPPED — pack draws no LOD terrain even in mono (missing %s)", tag, absent);
+                disableShaders(context);
+                return;
+            }
+        }
         Shot half = shot(context, tag + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
-        Shot par = shot(context, tag + "_half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false);
+        Shot par = shot(context, tag + "_half_parallel", StereoMode.SBS_HALF, parallelIpd, 0f, false);
         checkEyesIdentical(context, tag + "_half_ipd0");
         if (Boolean.getBoolean("stereoscopic.test.probeTaa")) probeTaaHistory(context, tag);
         set(context, StereoMode.OFF, IPD, CONV, false);
+        disableShaders(context);
+        checkPresence(half, par);
+        checkParallel(par);
+        checkDepthScaling(par);
+        checkConvergenceConsistent(half, par);
+    }
+
+    /**
+     * LOD renderer pass (Distant Horizons / Voxy; issue #5 candidate). Turns
+     * to the LOD scene and drops vanilla render distance so its pillars are
+     * drawn only by {@code mod} (any other LOD mod's rendering off), while the
+     * sheep and particle stay vanilla — the depth and convergence checks then
+     * compare the LOD renderer's camera/projection path directly against
+     * entities and particles. A control shot with {@code mod}'s rendering off
+     * proves the pillars really come from it. Repeated with the shader pack.
+     */
+    private void lodPass(ClientGameTestContext context, TestSingleplayerContext sp, String mod) {
+        for (String other : List.of("dh", "voxy")) lodRendering(context, other, other.equals(mod));
+        int nearRenderDistance = context.computeOnClient(mc -> mc.options.renderDistance().get());
+        // Load the LOD scene's chunks client-side (LOD mods ingest loaded
+        // chunks), then view it from the start position with vanilla render
+        // distance too short to reach the pillars.
+        server.runCommand("tp @p 0.5 -60 -80 180 0");
+        StereoTestCompat.waitForChunksRender(sp);
+        context.waitTicks(100);
+        server.runCommand("tp @p 0.5 -60 0.5 180 0");
+        setRenderDistance(context, LOD_RENDER_DISTANCE);
+        StereoTestCompat.waitForChunksRender(sp);
+        depth = LOD_DEPTH;
+        particleAt = LOD_PARTICLE;
+        parallelIpd = LOD_PARALLEL_IPD;
+        context.waitTicks(100); // LOD build/upload
+        log("%s: render distance %d -> %d", mod, nearRenderDistance, LOD_RENDER_DISTANCE);
+
+        lodRendering(context, mod, false);
+        Shot off = shot(context, mod + "_control_rendering_off", StereoMode.OFF, IPD, CONV, false);
+        for (Marker m : TERRAIN) {
+            if (off.whole().get(m) != null) fail(mod + " control: " + m + " visible with " + mod + " rendering off — the pass would not measure " + mod);
+        }
+        for (Marker m : EnumSet.complementOf(TERRAIN)) {
+            if (off.whole().get(m) == null) fail(mod + " control: vanilla " + m + " missing");
+        }
+        lodRendering(context, mod, true);
+        context.waitTicks(40);
+        log("%s: LOD scene", mod);
+
+        Shot half = shot(context, mod + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
+        Shot halfSwap = shot(context, mod + "_half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true);
+        Shot par = shot(context, mod + "_half_parallel", StereoMode.SBS_HALF, parallelIpd, 0f, false);
+        Shot full = shot(context, mod + "_full_conv4", StereoMode.SBS_FULL, IPD, CONV, false);
+        checkEyesIdentical(context, mod + "_half_ipd0");
+        set(context, StereoMode.OFF, IPD, CONV, false);
+        checkPresence(half, halfSwap, par, full);
+        checkSwapMirrors(half, halfSwap);
+        checkParallel(par);
+        checkDepthScaling(par);
+        checkConvergenceConsistent(half, par);
+
+        shaderPass(context, mod + "_shaders", "");
+        shaderPass(context, mod + "_shaders_noTAA", "TAA_DEFINE=0\n");
+
+        depth = NEAR_DEPTH;
+        particleAt = NEAR_PARTICLE;
+        parallelIpd = PARALLEL_IPD;
+        for (String other : List.of("dh", "voxy")) lodRendering(context, other, true);
+        setRenderDistance(context, nearRenderDistance);
+        server.runCommand("tp @p 0.5 -60 0.5 0 10");
+        StereoTestCompat.waitForChunksRender(sp);
+        context.waitTicks(20);
+    }
+
+    /** Like the video settings screen: Sodium only re-reads it on a renderer reload. */
+    private static void setRenderDistance(ClientGameTestContext context, int chunks) {
+        context.runOnClient(mc -> {
+            mc.options.renderDistance().set(chunks);
+            mc.levelRenderer.allChanged();
+        });
+        context.waitTicks(20);
+    }
+
+    private static void lodRendering(ClientGameTestContext context, String mod, boolean on) {
+        context.runOnClient(mc -> {
+            switch (mod) {
+                case "dh" -> {
+                    if (FabricLoader.getInstance().isModLoaded("distanthorizons")) {
+                        DhApi.Delayed.configs.graphics().renderingEnabled().setValue(on);
+                    }
+                }
+                case "voxy" -> {
+                    // What Voxy's own "rendering" option does on change.
+                    if (FabricLoader.getInstance().isModLoaded("voxy")) {
+                        VoxyConfig.CONFIG.enableRendering = on;
+                        IGetVoxyRenderSystem rs = (IGetVoxyRenderSystem) mc.levelRenderer;
+                        boolean running = rs.voxy$getRenderSystem() != null;
+                        if (on && !running) rs.voxy$createRenderer();
+                        else if (!on && running) rs.voxy$shutdownRenderer();
+                    }
+                }
+                default -> throw new IllegalArgumentException(mod);
+            }
+        });
+        context.waitTicks(20);
+    }
+
+    private static void disableShaders(ClientGameTestContext context) {
         context.runOnClient(mc -> {
             try {
                 Iris.getIrisConfig().setShadersEnabled(false);
@@ -158,9 +320,6 @@ public class StereoClientGameTest implements FabricClientGameTest {
             }
         });
         context.waitTicks(20);
-        checkPresence(half, par);
-        checkParallel(par);
-        checkConvergenceConsistent(half, par);
     }
 
     /** DIAGNOSTIC: compare LEFT/RIGHT bank colortex2 (Complementary TAA history). */
@@ -212,8 +371,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
      */
     private void checkEyesIdentical(ClientGameTestContext context, String name) {
         set(context, StereoMode.SBS_HALF, 0.0005f, 0f, false);
-        context.waitTicks(10);
-        Shot s = StereoMetrics.measure(name, context.takeScreenshot(name));
+        Shot s = capture(context, name);
         double whole = StereoMetrics.asymmetry(s);
         log("%s: eye asymmetry %.3f%% of pixels", name, whole * 100);
         if (whole > 0.005) fail(String.format("%s: eyes differ at zero IPD (%.2f%% of pixels) — one-eye artifact", name, whole * 100));
@@ -260,13 +418,39 @@ public class StereoClientGameTest implements FabricClientGameTest {
     }
 
     /**
+     * Parallel disparity is f·IPD/depth for every point, whatever draws it, so
+     * K = -d·depth must agree across terrain, entity and particle markers.
+     * Catches a renderer applying a different eye separation (issue #5:
+     * "entities & particles have exaggerated eye distance").
+     */
+    private void checkDepthScaling(Shot par) {
+        Map<Marker, Double> k = new EnumMap<>(Marker.class);
+        for (Marker m : Marker.values()) {
+            Double d = disp(par, m);
+            if (d != null) k.put(m, -d * depth.get(m));
+        }
+        if (k.size() < Marker.values().length) return; // presence check reports it
+        double[] sorted = k.values().stream().mapToDouble(Double::doubleValue).sorted().toArray();
+        double median = sorted[sorted.length / 2];
+        StringBuilder sb = new StringBuilder();
+        k.forEach((m, v) -> sb.append(String.format(" %s=%.1f", m, v)));
+        log("%s: disparity x depth per marker:%s", par.name(), sb);
+        for (var e : k.entrySet()) {
+            double ratio = e.getValue() / median;
+            if (ratio < 0.7 || ratio > 1.4) {
+                fail(String.format("%s: %s eye separation %.2fx the scene's (disparity x depth%s)", par.name(), e.getKey(), ratio, sb));
+            }
+        }
+    }
+
+    /**
      * Convergence adds the SAME constant screen shift to every object
      * regardless of depth or renderer: d_conv = d_parallel(ipd) + C. With the
      * parallel shot taken at a different IPD, C_i = d_conv_i - k * d_par_i
-     * (k = IPD / PARALLEL_IPD) must agree across terrain and entity markers.
+     * (k = IPD / parallel IPD) must agree across terrain and entity markers.
      */
     private void checkConvergenceConsistent(Shot conv, Shot par) {
-        double k = IPD / PARALLEL_IPD;
+        double k = IPD / parallelIpd;
         double min = Double.MAX_VALUE, max = -Double.MAX_VALUE;
         StringBuilder sb = new StringBuilder();
         for (Marker m : Marker.values()) {
@@ -341,8 +525,17 @@ public class StereoClientGameTest implements FabricClientGameTest {
         if (changed) context.waitTicks(60);
     }
 
-    private static Shot shot(ClientGameTestContext context, String name, StereoMode mode, float ipd, float conv, boolean swap) {
+    private Shot shot(ClientGameTestContext context, String name, StereoMode mode, float ipd, float conv, boolean swap) {
         set(context, mode, ipd, conv, swap);
+        return capture(context, name);
+    }
+
+    /**
+     * Screenshot + measure. Re-spawns the particle marker first: a static
+     * cyan-wool block_marker billboard (80-tick lifetime) in the active scene.
+     */
+    private Shot capture(ClientGameTestContext context, String name) {
+        server.runCommand("particle minecraft:block_marker{block_state:{Name:\"minecraft:cyan_wool\"}} " + particleAt + " 0 0 0 0 1 force");
         context.waitTicks(10);
         return StereoMetrics.measure(name, context.takeScreenshot(name));
     }
