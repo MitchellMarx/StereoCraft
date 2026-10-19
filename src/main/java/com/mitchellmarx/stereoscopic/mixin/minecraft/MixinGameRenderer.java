@@ -158,15 +158,18 @@ public abstract class MixinGameRenderer {
                 int h = realMainFb.textureHeight;
                 SimpleFramebuffer scratch = PerEyeRenderer.ensureScratchFb(w, h);
 
-                // Axis: getDiagonalPlane is the local RIGHT vector (X-axis
-                // after camera rotation). getHorizontalPlane is forward, not
-                // right — the names mislead. See feedback_camera_plane_naming.
+                // Axis: Yarn's getDiagonalPlane is the local LEFT vector —
+                // Camera.DIAGONAL is (-1, 0, 0), i.e. Mojmap's leftVector()
+                // (getHorizontalPlane is forward). Treating it as RIGHT put each
+                // eye's camera on the wrong side (pseudo-stereo, inverted depth;
+                // caught by the gametest's parallel-disparity check). Negate to
+                // get right, as the 26.x branches do with leftVector().
                 // Sign: getEyeOffset() returns -ipd/2 for LEFT, +ipd/2 for
                 // RIGHT — LEFT shifts along the negative right-vector to sit
                 // at the physical left eye's position.
                 float dx = StereoState.INSTANCE.getEyeOffset();
-                Vector3fc right = camera.getDiagonalPlane();
-                Vec3d eyePos = basePos.add(right.x() * dx, right.y() * dx, right.z() * dx);
+                Vector3fc left = camera.getDiagonalPlane();
+                Vec3d eyePos = basePos.add(-left.x() * dx, -left.y() * dx, -left.z() * dx);
                 ((CameraAccessor)(Object)camera).stereoscopic$setPos(eyePos);
 
                 PerEyeRenderer.setScratchFbActive(true);
