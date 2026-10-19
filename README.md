@@ -18,18 +18,36 @@ branch is independent.
 | Branch           | Loader   | Minecraft | Notes                                              |
 | ---------------- | -------- | --------- | -------------------------------------------------- |
 | `main`           | —        | —         | This overview (orphan, no code).                   |
-| `fabric-1.21.11` | Fabric   | 1.21.11   | Yarn mappings, remapping Loom.                     |
+| `fabric-26.3`    | Fabric   | 26.3      | Unobfuscated; renderpearl GPU layer, SDL3 window, Java 25. |
+| `fabric-26.2`    | Fabric   | 26.2      | Unobfuscated, non-remapping Loom, Java 25.         |
 | `fabric-26.1.2`  | Fabric   | 26.1.2    | Unobfuscated (no mappings), non-remapping Loom, Java 25. |
+| `fabric-1.21.11` | Fabric   | 1.21.11   | Yarn mappings, remapping Loom.                     |
 | `neoforge`       | NeoForge | 1.21.1    | Parchment / Mojang mappings.                       |
 | `angelica`       | Angelica | 1.7.10    | Angelica/GTNH-era rendering.                       |
 
-> MC 26.x ships unobfuscated (real names + parameter names), so `fabric-26.1.2`
-> drops Yarn/intermediary entirely and uses the non-remapping
-> `net.fabricmc.fabric-loom` line. See that branch's git log for the full porting
+> MC 26.x ships unobfuscated (real names + parameter names), so the `fabric-26.*`
+> branches drop Yarn/intermediary entirely and use the non-remapping
+> `net.fabricmc.fabric-loom` line. See each branch's git log for the porting
 > notes (render-state extraction, GUI rewrite, projection UBO, LWJGL 3.4, etc.).
 
 All branches share the same architecture and per-eye strategy, adapted to each
-loader's rendering pipeline.
+loader's rendering pipeline, and the same feature set (OFF / SBS_HALF / SBS_FULL,
+IPD, convergence, swap eyes). Releases are tagged per branch (`<branch>-vX.Y.Z`).
+
+## Automated stereo tests
+
+Each branch has a client test that builds a fixed scene (wool pillars, a sheep,
+a particle), screenshots it in every stereo mode, and measures each eye's image:
+markers present in both eyes, swap mirroring, parallax sign and depth scaling,
+equal convergence shift for terrain / entities / particles, SBS_FULL vs HALF
+aspect, identical eyes at zero IPD. The same checks run with a shader pack (TAA
+on and off) and on a far scene drawn only by Distant Horizons / Voxy.
+
+| Branch | Command |
+| ------ | ------- |
+| `fabric-*` | `./gradlew stereoTest` |
+| `neoforge` | `./gradlew runSelftest` |
+| `angelica` | `./gradlew runClient25 -Pstereoscopic.selftest` |
 
 ## Project structure (version branches)
 
@@ -42,7 +60,7 @@ src/main/java/com/mitchellmarx/stereoscopic/
   cursor/    Async stereo cursor (Windows): a present thread that draws a cursor
              sprite into both eye halves.
   gui/       StereoOptionsPage — Sodium options-page integration.
-  compat/    Optional-dependency facades (Iris, Sodium, Voxy).
+  compat/    Optional-dependency facades (Iris, Sodium, Voxy, Distant Horizons).
   mixin/
     minecraft/  Core hooks: per-eye world + GUI render, camera, framebuffer,
                 mouse, window present.
