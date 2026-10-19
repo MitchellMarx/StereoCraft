@@ -21,6 +21,15 @@ repositories {
     maven("https://api.modrinth.com/maven") { name = "Modrinth" }
 }
 
+// Stereo self-test (src/selftest): dev-only, never in the shipped jar.
+// `./gradlew runSelftest` exits non-zero if any stereo check fails.
+val selftest: SourceSet by sourceSets.creating {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+configurations[selftest.compileClasspathConfigurationName].extendsFrom(configurations.compileClasspath.get())
+configurations[selftest.runtimeClasspathConfigurationName].extendsFrom(configurations.runtimeClasspath.get())
+
 neoForge {
     version = project.property("neoforge_version") as String
 
@@ -35,12 +44,35 @@ neoForge {
             gameDirectory = file("run")
             programArguments.addAll("--username", "Dev")
         }
+        register("selftest") {
+            client()
+            gameDirectory = file("run-selftest")
+            programArguments.addAll("--username", "Dev")
+            systemProperty("stereoscopic.selftest", "true")
+            sourceSet = selftest
+        }
     }
 
     mods {
         register(project.property("mod_id") as String) {
             sourceSet(sourceSets.main.get())
+            sourceSet(selftest)
         }
+    }
+}
+
+neoForge.addModdingDependenciesTo(selftest)
+
+// The client's exit status is unreliable (forced exits can die with
+// 0xC0000409), so the self-test reports through a result file instead.
+tasks.matching { it.name == "runSelftest" }.configureEach {
+    val result = file("run-selftest/stereo-selftest-result.txt")
+    (this as JavaExec).isIgnoreExitValue = true
+    doFirst { result.delete() }
+    doLast {
+        val text = if (result.isFile) result.readText() else "no result file (client crashed before finishing)"
+        if (!text.startsWith("PASS")) throw GradleException("Stereo self-test failed:\n$text")
+        logger.lifecycle("Stereo self-test: PASS")
     }
 }
 

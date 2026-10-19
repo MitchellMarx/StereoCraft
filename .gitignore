@@ -27,3 +27,5 @@ logs/
 # reference bytecode. Kept locally as a dev aid; not part of the distributed mod.
 docs/superpowers/
 /xaero/
+
+run-selftest/
