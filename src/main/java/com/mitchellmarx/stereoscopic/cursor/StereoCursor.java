@@ -3,8 +3,9 @@ package com.mitchellmarx.stereoscopic.cursor;
 import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWNativeWin32;
+import org.lwjgl.sdl.SDLMouse;
+import org.lwjgl.sdl.SDLProperties;
+import org.lwjgl.sdl.SDLVideo;
 
 /**
  * Main-thread facade for the stereo cursor system. Owns the
@@ -76,6 +77,7 @@ public final class StereoCursor {
         // Hide the OS arrow during stereo+GUI so the user doesn't see two
         // cursors (OS arrow + our sprite). HIDDEN, not DISABLED — cursor
         // thread keeps reading GetCursorPos for the virtual cursor position.
+        // (26.3/SDL3: SDL_HideCursor, not relative mode, for the same reason.)
         if (screenOpen) {
             hideOsCursor(mc);
         } else {
@@ -89,10 +91,10 @@ public final class StereoCursor {
         long handle = mc.getWindow().handle();
         if (handle == 0L) return;
         try {
-            GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_HIDDEN);
+            SDLMouse.SDL_HideCursor();
             weAreHidingCursor = true;
         } catch (Throwable t) {
-            Stereoscopic.LOG.warn("glfwSetInputMode CURSOR_HIDDEN failed", t);
+            Stereoscopic.LOG.warn("SDL_HideCursor failed", t);
         }
     }
 
@@ -108,19 +110,14 @@ public final class StereoCursor {
             weAreHidingCursor = false;
             return;
         }
-        // Restore to MC's preferred mode for the current state:
-        //   gameplay (no screen) → DISABLED (look-deltas need the recenter)
-        //   screen still open → NORMAL
-        // MC's own setScreen(null) → mouse.lockCursor() ran during input
-        // processing before our tick, so the mode we restore to matches.
-        // Hard-coding NORMAL would clobber MC's correct DISABLED setting.
-        int mode = (mc.gui.screen() == null)
-            ? GLFW.GLFW_CURSOR_DISABLED
-            : GLFW.GLFW_CURSOR_NORMAL;
+        // SDL3 keeps cursor visibility separate from MC's grab state:
+        // gameplay grab is SDL_SetWindowRelativeMouseMode, which hides the
+        // cursor on its own regardless of SDL_ShowCursor. So unconditionally
+        // showing it can't clobber MC's grabbed (hidden) gameplay cursor.
         try {
-            GLFW.glfwSetInputMode(handle, GLFW.GLFW_CURSOR, mode);
+            SDLMouse.SDL_ShowCursor();
         } catch (Throwable t) {
-            Stereoscopic.LOG.warn("glfwSetInputMode restore failed", t);
+            Stereoscopic.LOG.warn("SDL_ShowCursor restore failed", t);
         }
         weAreHidingCursor = false;
     }
@@ -160,9 +157,10 @@ public final class StereoCursor {
 
     private static CursorBackend createBackend() {
         try {
-            long mainGlfw = GLFW.glfwGetCurrentContext();
-            if (mainGlfw == 0L) return null;
-            long hwnd = GLFWNativeWin32.glfwGetWin32Window(mainGlfw);
+            long mainSdl = SDLVideo.SDL_GL_GetCurrentWindow();
+            if (mainSdl == 0L) return null;
+            long hwnd = SDLProperties.SDL_GetPointerProperty(
+                SDLVideo.SDL_GetWindowProperties(mainSdl), SDLVideo.SDL_PROP_WINDOW_WIN32_HWND_POINTER, 0L);
             if (hwnd == 0L) return null;
             return new WindowsCursorBackend(hwnd);
         } catch (Throwable t) {

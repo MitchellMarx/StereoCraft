@@ -1,7 +1,7 @@
 plugins {
     // MC 26.x is unobfuscated: use the non-remapping Loom line, matching
-    // FabricMC/fabric-example-mod @ 26.2.
-    id("net.fabricmc.fabric-loom") version "1.17-SNAPSHOT"
+    // FabricMC/fabric-example-mod @ 26.3.
+    id("net.fabricmc.fabric-loom") version "1.18-SNAPSHOT"
     `java-library`
     `maven-publish`
 }
@@ -76,9 +76,9 @@ tasks.test { useJUnitPlatform() }
 // No remapJar in the unobfuscated build: the plain `jar` is the final mod jar.
 val testInstanceMods = file(
     (project.findProperty("stereoscopic.deployDir") as String?)
-        // Profile is still NAMED "Fabric 26.1.2" but was upgraded in place to
-        // MC 26.2 (disk-space constraint — no separate 26.2 profile).
-        ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.1.2/mods"
+        // Dedicated 26.3 profile; copy is skipped if it does not exist, so this
+        // never clobbers the 26.2 jar in the in-place-upgraded "Fabric 26.1.2" profile.
+        ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.3/mods"
 )
 
 val copyToTestInstance by tasks.registering(Copy::class) {

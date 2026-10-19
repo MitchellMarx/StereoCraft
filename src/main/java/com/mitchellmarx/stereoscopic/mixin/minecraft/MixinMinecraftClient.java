@@ -6,9 +6,9 @@ import com.mitchellmarx.stereoscopic.cursor.CursorPresentThread;
 import com.mitchellmarx.stereoscopic.cursor.StereoCursor;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
 import com.mitchellmarx.stereoscopic.render.StereoBlur;
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.GpuSurface;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
+import com.mojang.renderpearl.api.device.GpuSurface;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -51,7 +51,7 @@ public abstract class MixinMinecraftClient {
     @WrapOperation(
         method = "renderFrame(Z)V",
         at = @At(value = "INVOKE",
-                 target = "Lcom/mojang/blaze3d/systems/GpuSurface;blitFromTexture(Lcom/mojang/blaze3d/systems/CommandEncoder;Lcom/mojang/blaze3d/textures/GpuTextureView;)V")
+                 target = "Lcom/mojang/renderpearl/api/device/GpuSurface;blitFromTexture(Lcom/mojang/renderpearl/api/commands/CommandEncoder;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V")
     )
     private void stereoscopic$publishFrameToCursorThread(GpuSurface surface,
                                                          CommandEncoder encoder,

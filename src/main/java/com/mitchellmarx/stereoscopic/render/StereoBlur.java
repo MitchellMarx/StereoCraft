@@ -2,13 +2,13 @@ package com.mitchellmarx.stereoscopic.render;
 
 import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mitchellmarx.stereoscopic.core.StereoState;
-import com.mojang.blaze3d.GpuFormat;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
-import com.mojang.blaze3d.systems.CommandEncoder;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelTargetBundle;
 import net.minecraft.client.renderer.PostChain;
@@ -89,7 +89,7 @@ public final class StereoBlur {
     private static boolean ensureBlurFB(int w, int h) {
         if (currentW == w && currentH == h && blurFB != null) return true;
         if (blurFB != null) { blurFB.destroyBuffers(); blurFB = null; }
-        TextureTarget fb = new TextureTarget("stereoscopic-blur", w, h, true, GpuFormat.RGBA8_UNORM);
+        TextureTarget fb = new TextureTarget("stereoscopic-blur", w, h, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
         // RenderTarget has no checkFramebufferStatus(); the closest
         // post-construction sanity check is verifying the GpuTexture attachments
         // were created. createTexture throws on allocation failure, so this

@@ -7,12 +7,12 @@ import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.irisshaders.iris.pipeline.FinalPassRenderer;
 import net.minecraft.client.Minecraft;
@@ -106,7 +106,7 @@ public abstract class MixinFinalPassRenderer {
 
     @Unique
     private static int stereoscopic$extractGlId(GpuTexture tex) {
-        if (tex instanceof com.mojang.blaze3d.opengl.GlTexture gl) return gl.glId();
+        if (tex instanceof com.mojang.renderpearl.backend.opengl.GlTexture gl) return gl.glId();
         Stereoscopic.LOG.warn("[final-pass] glId extraction failed for non-GlTexture {}; scratch will not bind",
             tex.getClass().getName());
         return 0;
@@ -119,7 +119,7 @@ public abstract class MixinFinalPassRenderer {
     @WrapOperation(
         method = "renderFinalPass",
         at = @At(value = "INVOKE",
-                 target = "Lcom/mojang/blaze3d/systems/CommandEncoder;createRenderPass(Ljava/util/function/Supplier;Lcom/mojang/blaze3d/textures/GpuTextureView;Ljava/util/Optional;)Lcom/mojang/blaze3d/systems/RenderPass;",
+                 target = "Lcom/mojang/renderpearl/api/commands/CommandEncoder;createRenderPass(Ljava/util/function/Supplier;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Ljava/util/Optional;)Lcom/mojang/renderpearl/api/commands/RenderPass;",
                  remap = false)
     )
     private RenderPass stereoscopic$substituteRenderPassView(CommandEncoder receiver,

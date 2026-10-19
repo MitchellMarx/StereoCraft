@@ -118,7 +118,7 @@ public abstract class MixinGuiRenderer {
      *
      * <p>{@code renderPreparedDraws} builds its model-view via
      * {@code new Matrix4f().setTranslation(0, 0, -11000)} and passes it as
-     * arg 0 of {@code DynamicUniforms.write(...)}; we modify it there.
+     * arg 0 of {@code DynamicGpuData.writeTransform(...)} (26.3 rename of DynamicUniforms); we modify it there.
      * JOML chains right-to-left in vector application: {@code m.translate(t).scale(s)}
      * = {@code M * T * S} = "scale first, then translate."
      */
@@ -127,7 +127,7 @@ public abstract class MixinGuiRenderer {
     @ModifyArg(
         method = "draw()V",
         at = @At(value = "INVOKE",
-                 target = "Lnet/minecraft/client/renderer/DynamicUniforms;writeTransform(Lorg/joml/Matrix4f;)Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"),
+                 target = "Lnet/minecraft/client/renderer/DynamicGpuData;writeTransform(Lorg/joml/Matrix4f;)Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;"),
         index = 0
     )
     private Matrix4f stereoscopic$perEyeHudTransform(Matrix4f original) {

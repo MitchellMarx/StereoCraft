@@ -8,13 +8,12 @@ import com.mitchellmarx.stereoscopic.core.StereoMath;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.cursor.StereoCursor;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
-import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.Window;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
@@ -61,8 +60,10 @@ public abstract class MixinGameRenderer {
     /** True once we've forced Iris's pipeline to rebuild after first stereo activation. */
     private static boolean stereoscopic$irisRebuiltForStereo = false;
 
-    @Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("HEAD"))
-    private void stereoscopic$beginFrame(DeltaTracker tracker, boolean tick, CallbackInfo ci) {
+    // 26.3: render()/renderLevel() lost their DeltaTracker args (extraction
+    // already happened in extract(DeltaTracker, boolean)).
+    @Inject(method = "render()V", at = @At("HEAD"))
+    private void stereoscopic$beginFrame(CallbackInfo ci) {
         Window w = minecraft.getWindow();
         StereoState.INSTANCE.beginFrame(w.getWidth(), w.getHeight());
         StereoCursor.tick();
@@ -85,8 +86,8 @@ public abstract class MixinGameRenderer {
         stereoscopic$irisRebuiltForStereo = true;
     }
 
-    @Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("RETURN"))
-    private void stereoscopic$endFrame(DeltaTracker tracker, boolean tick, CallbackInfo ci) {
+    @Inject(method = "render()V", at = @At("RETURN"))
+    private void stereoscopic$endFrame(CallbackInfo ci) {
         StereoState.INSTANCE.endFrame();
     }
 
@@ -105,16 +106,15 @@ public abstract class MixinGameRenderer {
      * main FB at the eye rect with {@code GL_LINEAR}.
      */
     @WrapOperation(
-        method = "render(Lnet/minecraft/client/DeltaTracker;Z)V",
+        method = "render()V",
         at = @At(value = "INVOKE",
-                 target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;)V")
+                 target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel()V")
     )
     private void stereoscopic$twoPassRenderLevel(
             GameRenderer self,
-            DeltaTracker deltaTracker,
             Operation<Void> original) {
         if (!StereoState.INSTANCE.isActive()) {
-            original.call(self, deltaTracker);
+            original.call(self);
             return;
         }
         CameraRenderState crs = gameRenderState().levelRenderState.cameraRenderState;
@@ -132,7 +132,7 @@ public abstract class MixinGameRenderer {
             // HEAD inject above) still returns the real main FB.
             RenderTarget outerCheckFb = ((GameRenderer) (Object) this).mainRenderTarget();
             if (outerCheckFb == null || outerCheckFb.getColorTexture() == null) {
-                original.call(self, deltaTracker);
+                original.call(self);
                 return;
             }
             PerEyeRenderer.runForEachEye(PerEyeRenderer.Pass.WORLD, () -> {
@@ -161,7 +161,7 @@ public abstract class MixinGameRenderer {
 
                 PerEyeRenderer.setScratchFbActive(true);
                 try {
-                    original.call(self, deltaTracker);
+                    original.call(self);
                 } finally {
                     PerEyeRenderer.setScratchFbActive(false);
                 }

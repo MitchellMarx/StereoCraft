@@ -7,13 +7,13 @@ import com.mitchellmarx.stereoscopic.core.StereoState;
 // no RenderSystem.viewport(IIII) wrapper. GlStateManager lives in
 // com.mojang.blaze3d.opengl.
 import com.mitchellmarx.stereoscopic.Stereoscopic;
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.opengl.GlStateManager;
-import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -57,7 +57,7 @@ public final class PerEyeRenderer {
         }
         // 26.2: TextureTarget now takes an explicit GpuFormat; RGBA8_UNORM
         // matches the vanilla main target's color format.
-        scratchFb = new TextureTarget("stereoscopic-world-scratch", w, h, true, GpuFormat.RGBA8_UNORM);
+        scratchFb = new TextureTarget("stereoscopic-world-scratch", w, h, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT);
         scratchFbW = w;
         scratchFbH = h;
         return scratchFb;

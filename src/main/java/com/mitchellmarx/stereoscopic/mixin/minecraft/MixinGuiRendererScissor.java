@@ -4,7 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mitchellmarx.stereoscopic.core.StereoOptions;
 import com.mitchellmarx.stereoscopic.core.StereoState;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import net.minecraft.client.gui.render.GuiRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -40,9 +40,9 @@ import org.spongepowered.asm.mixin.injection.At;
 public abstract class MixinGuiRendererScissor {
 
     @WrapOperation(
-        method = "enableScissor(Lnet/minecraft/client/gui/navigation/ScreenRectangle;Lcom/mojang/blaze3d/systems/RenderPass;)V",
+        method = "enableScissor(Lnet/minecraft/client/gui/navigation/ScreenRectangle;Lcom/mojang/renderpearl/api/commands/RenderPass;)V",
         at = @At(value = "INVOKE",
-                 target = "Lcom/mojang/blaze3d/systems/RenderPass;enableScissor(IIII)V")
+                 target = "Lcom/mojang/renderpearl/api/commands/RenderPass;enableScissor(IIII)V")
     )
     private void stereoscopic$perEyeScissor(RenderPass pass, int x, int y, int w, int h, Operation<Void> original) {
         StereoState s = StereoState.INSTANCE;

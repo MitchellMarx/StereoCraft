@@ -3,7 +3,7 @@ package com.mitchellmarx.stereoscopic.mixin.minecraft;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
-import com.mojang.blaze3d.opengl.DirectStateAccess;
+import com.mojang.renderpearl.backend.opengl.DirectStateAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -26,13 +26,13 @@ import org.spongepowered.asm.mixin.injection.At;
  * zero-width rect, no pixels written.
  */
 // GlCommandEncoder is package-private in com.mojang.blaze3d.opengl — target by name.
-@Mixin(targets = "com.mojang.blaze3d.opengl.GlCommandEncoder")
+@Mixin(targets = "com.mojang.renderpearl.backend.opengl.GlCommandEncoder")
 public abstract class MixinGlCommandEncoder {
 
     @WrapOperation(
-        method = "copyTextureToTexture(Lcom/mojang/blaze3d/textures/GpuTexture;Lcom/mojang/blaze3d/textures/GpuTexture;IIIIIII)V",
+        method = "copyTextureToTexture(Lcom/mojang/renderpearl/api/textures/GpuTexture;Lcom/mojang/renderpearl/api/textures/GpuTexture;IIIIIII)V",
         at = @At(value = "INVOKE",
-                 target = "Lcom/mojang/blaze3d/opengl/DirectStateAccess;blitFrameBuffers(IIIIIIIIIIII)V")
+                 target = "Lcom/mojang/renderpearl/backend/opengl/DirectStateAccess;blitFrameBuffers(IIIIIIIIIIII)V")
     )
     private void stereoscopic$fixBlitEndpoints(
             DirectStateAccess bm,

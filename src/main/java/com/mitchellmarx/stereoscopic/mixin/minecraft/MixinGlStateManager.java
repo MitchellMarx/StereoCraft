@@ -4,7 +4,7 @@ import com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.render.PerEyeRenderer;
 // 1.21.11: GlStateManager moved from com.mojang.blaze3d.platform to com.mojang.blaze3d.opengl.
-import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

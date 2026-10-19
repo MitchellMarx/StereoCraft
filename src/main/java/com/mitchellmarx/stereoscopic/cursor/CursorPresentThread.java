@@ -1,13 +1,10 @@
 package com.mitchellmarx.stereoscopic.cursor;
 
 import com.mitchellmarx.stereoscopic.Stereoscopic;
-import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWNativeWGL;
-import org.lwjgl.glfw.GLFWNativeWin32;
 import org.lwjgl.opengl.ARBCopyImage;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
@@ -19,6 +16,8 @@ import org.lwjgl.opengl.GLCapabilities;
 import org.lwjgl.opengl.WGL;
 import org.lwjgl.opengl.WGLARBCreateContext;
 import org.lwjgl.opengl.WGLEXTSwapControl;
+import org.lwjgl.sdl.SDLProperties;
+import org.lwjgl.sdl.SDLVideo;
 import org.lwjgl.system.JNI;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.system.windows.GDI32;
@@ -203,17 +202,19 @@ public final class CursorPresentThread {
 
         long mainHwnd = 0L, mainHdc = 0L, cursorHglrc = 0L;
         try {
-            long mainGlfw = GLFW.glfwGetCurrentContext();
-            if (mainGlfw == 0L) throw new IllegalStateException("glfwGetCurrentContext returned NULL");
+            // MC 26.3 windows are SDL3: HWND comes from the window's property set.
+            long mainSdl = SDLVideo.SDL_GL_GetCurrentWindow();
+            if (mainSdl == 0L) throw new IllegalStateException("SDL_GL_GetCurrentWindow returned NULL");
 
-            mainHwnd = GLFWNativeWin32.glfwGetWin32Window(mainGlfw);
-            if (mainHwnd == 0L) throw new IllegalStateException("glfwGetWin32Window returned NULL");
+            mainHwnd = SDLProperties.SDL_GetPointerProperty(
+                SDLVideo.SDL_GetWindowProperties(mainSdl), SDLVideo.SDL_PROP_WINDOW_WIN32_HWND_POINTER, 0L);
+            if (mainHwnd == 0L) throw new IllegalStateException("SDL_PROP_WINDOW_WIN32_HWND_POINTER was NULL");
 
             mainHdc = User32.GetDC(mainHwnd);
             if (mainHdc == 0L) throw new IllegalStateException("User32.GetDC returned NULL");
 
-            long mainHglrc = GLFWNativeWGL.glfwGetWGLContext(mainGlfw);
-            if (mainHglrc == 0L) throw new IllegalStateException("glfwGetWGLContext returned NULL");
+            long mainHglrc = WGL.wglGetCurrentContext(null);
+            if (mainHglrc == 0L) throw new IllegalStateException("wglGetCurrentContext returned NULL");
 
             // Match MC's version for cleanest sharing; 3.2 compat fallback if query fails.
             int major = GL11.glGetInteger(GL_MAJOR_VERSION);
