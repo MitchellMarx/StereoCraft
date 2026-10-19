@@ -35,6 +35,7 @@ dependencies {
     runtimeOnly("maven.modrinth:iris:${project.property("iris_version")}")
 
     compileOnly("maven.modrinth:voxy:${project.property("voxy_version")}")
+    compileOnly("maven.modrinth:distanthorizons:${project.property("dh_version")}")
 
     // MixinExtras is bundled inside Fabric Loader 0.19 at runtime; compileOnly
     // for the annotations (@WrapOperation, @ModifyReturnValue, ...).
@@ -78,6 +79,23 @@ tasks.matching { it.name == "runClientGameTest" }.configureEach {
     // A loader error (e.g. incompatible test mods) exits instead of waiting on an error window.
     systemProperty("fabric.noGui", "true")
     if (project.hasProperty("stereoscopic.probeTaa")) systemProperty("stereoscopic.test.probeTaa", "true")
+    if (project.hasProperty("stereoscopic.lodOnly")) systemProperty("stereoscopic.test.lodOnly", "true")
+}
+// Full stereo suite: `./gradlew stereoTest`. DH and Voxy each get their own
+// client (both in one JVM runs out of memory); the Voxy client runs only the
+// LOD passes, the DH client everything else too.
+val gradlew = if (System.getProperty("os.name").startsWith("Windows")) "gradlew.bat" else "./gradlew"
+val stereoTestDh by tasks.registering(Exec::class) {
+    commandLine(file(gradlew).path, "runClientGameTest", "-Pstereoscopic.noVoxy")
+}
+val stereoTestVoxy by tasks.registering(Exec::class) {
+    commandLine(file(gradlew).path, "runClientGameTest", "-Pstereoscopic.noDh", "-Pstereoscopic.lodOnly")
+    mustRunAfter(stereoTestDh)
+}
+tasks.register("stereoTest") {
+    group = "verification"
+    description = "Stereo gametest: vanilla, shaders, Distant Horizons, Voxy"
+    dependsOn(stereoTestDh, stereoTestVoxy)
 }
 
 loom {

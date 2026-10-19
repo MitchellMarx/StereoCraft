@@ -6,8 +6,6 @@ import com.mitchellmarx.stereoscopic.core.StereoOptions;
 import com.mitchellmarx.stereoscopic.test.StereoMetrics.Marker;
 import com.mitchellmarx.stereoscopic.test.StereoMetrics.Shot;
 import com.seibel.distanthorizons.api.DhApi;
-import me.cortex.voxy.client.config.VoxyConfig;
-import me.cortex.voxy.client.core.IGetVoxyRenderSystem;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerContext;
@@ -103,21 +101,12 @@ public class StereoClientGameTest implements FabricClientGameTest {
             context.getInput().pressKey(o -> o.keyToggleGui); // hide HUD (F1)
             context.waitTicks(20);
 
-            Shot mono = shot(context, "mono", StereoMode.OFF, IPD, CONV, false);
-            Shot half = shot(context, "half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
-            Shot halfSwap = shot(context, "half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true);
-            Shot par = shot(context, "half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false);
-            Shot parSwap = shot(context, "half_parallel_swap", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, true);
-            Shot full = shot(context, "full_conv4", StereoMode.SBS_FULL, IPD, CONV, false);
-            checkEyesIdentical(context, "half_ipd0");
-
-            set(context, StereoMode.SBS_HALF, IPD, CONV, false);
+            // -Dstereoscopic.test.lodOnly: only the LOD passes (the second
+            // client of the stereoTest task, run with the other LOD mod).
+            boolean lodOnly = Boolean.getBoolean("stereoscopic.test.lodOnly");
+            if (!lodOnly) nearPass(context);
             context.getInput().resizeWindow(1000, 560);
             context.waitTicks(20);
-            Shot resized = capture(context, "half_conv4_after_resize");
-
-            set(context, StereoMode.OFF, IPD, CONV, false);
-            context.waitTicks(5);
 
             if (FabricLoader.getInstance().isModLoaded("distanthorizons")) lodPass(context, sp, "dh");
             else log("dh: SKIPPED (Distant Horizons not loaded)");
@@ -132,7 +121,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
                     String[] kv = variant.split("=", 2);
                     shaderPass(context, "bisect_" + kv[0], kv.length > 1 ? kv[1].replace(',', '\n') + "\n" : "");
                 }
-            } else {
+            } else if (!lodOnly) {
                 shaderPass(context, "shaders", "");
                 shaderPass(context, "shaders_noTAA", "TAA_DEFINE=0\n");
             }
@@ -141,22 +130,53 @@ public class StereoClientGameTest implements FabricClientGameTest {
             Path gameDir = context.computeOnClient(mc -> mc.gameDirectory.toPath());
             List<String> configs = new ArrayList<>(List.of("stereoscopic.mixins.json", "stereoscopic-iris.mixins.json"));
             if (FabricLoader.getInstance().isModLoaded("voxy")) configs.add("stereoscopic-voxy.mixins.json");
+            if (FabricLoader.getInstance().isModLoaded("distanthorizons")) configs.add("stereoscopic-dh.mixins.json");
             for (String f : StereoMixinAudit.audit(gameDir, configs.toArray(String[]::new))) fail("mixin: " + f);
             log("mixin audit: %d injectors/accessors verified", StereoMixinAudit.verified);
             if (StereoMixinAudit.verified < 20) fail("mixin audit verified only " + StereoMixinAudit.verified + " injectors — audit broken?");
 
-            checkPresence(half, halfSwap, par, parSwap, full, resized);
-            checkSwapMirrors(half, halfSwap);
-            checkSwapMirrors(par, parSwap);
-            checkParallel(par);
-            checkDepthScaling(par);
-            checkConvergenceConsistent(half, par);
-            checkAspect(mono, half, full);
+            if (FabricLoader.getInstance().isModLoaded("distanthorizons")) {
+                // With DH loaded, leaving the world deadlocks the gametest
+                // harness (render thread in IntegratedServer.halt waiting on
+                // the server thread, which waits in the gametest tick phaser)
+                // — after every check has run. Report and exit here instead.
+                Stereoscopic.LOG.info("[stereo-test] {}", verdict());
+                Runtime.getRuntime().halt(failures.isEmpty() ? 0 : 1);
+            }
         }
-        if (!failures.isEmpty()) {
-            throw new AssertionError("Stereo test failed:\n  " + String.join("\n  ", failures));
-        }
-        Stereoscopic.LOG.info("[stereo-test] ALL CHECKS PASSED");
+        if (!failures.isEmpty()) throw new AssertionError(verdict());
+        Stereoscopic.LOG.info("[stereo-test] {}", verdict());
+    }
+
+    /** Vanilla scene (Sodium terrain, entity, particle) in every mode, plus a mid-stereo resize. */
+    private void nearPass(ClientGameTestContext context) {
+        Shot mono = shot(context, "mono", StereoMode.OFF, IPD, CONV, false);
+        Shot half = shot(context, "half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
+        Shot halfSwap = shot(context, "half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true);
+        Shot par = shot(context, "half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false);
+        Shot parSwap = shot(context, "half_parallel_swap", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, true);
+        Shot full = shot(context, "full_conv4", StereoMode.SBS_FULL, IPD, CONV, false);
+        checkEyesIdentical(context, "half_ipd0");
+
+        set(context, StereoMode.SBS_HALF, IPD, CONV, false);
+        context.getInput().resizeWindow(1000, 560);
+        context.waitTicks(20);
+        Shot resized = capture(context, "half_conv4_after_resize");
+
+        set(context, StereoMode.OFF, IPD, CONV, false);
+        context.waitTicks(5);
+
+        checkPresence(half, halfSwap, par, parSwap, full, resized);
+        checkSwapMirrors(half, halfSwap);
+        checkSwapMirrors(par, parSwap);
+        checkParallel(par);
+        checkDepthScaling(par);
+        checkConvergenceConsistent(half, par);
+        checkAspect(mono, half, full);
+    }
+
+    private String verdict() {
+        return failures.isEmpty() ? "ALL CHECKS PASSED" : "Stereo test failed:\n  " + String.join("\n  ", failures);
     }
 
     /**
@@ -190,15 +210,15 @@ public class StereoClientGameTest implements FabricClientGameTest {
         context.waitTicks(100); // pack compile + pipeline build
         log("%s: %s [%s] active=%s", tag, name, packOptions.trim(), context.computeOnClient(mc -> Iris.getCurrentPack().isPresent()));
         if (depth == LOD_DEPTH) {
-            // A pack without support for this LOD mod doesn't draw its terrain
-            // even in mono — not a stereo defect, so skip rather than fail.
-            Shot mono = shot(context, tag + "_mono", StereoMode.OFF, IPD, CONV, false);
-            List<Marker> absent = TERRAIN.stream().filter(m -> mono.whole().get(m) == null).toList();
-            if (!absent.isEmpty()) {
-                log("%s: SKIPPED — pack draws no LOD terrain even in mono (missing %s)", tag, absent);
-                disableShaders(context);
-                return;
+            // LOD terrain streams back in after the pipeline rebuild; wait
+            // (mono) until it is drawn, and fail if it never is.
+            List<Marker> absent = List.copyOf(TERRAIN);
+            for (int attempt = 0; attempt < 6 && !absent.isEmpty(); attempt++) {
+                if (attempt > 0) context.waitTicks(40);
+                Shot mono = shot(context, tag + "_mono", StereoMode.OFF, IPD, CONV, false);
+                absent = TERRAIN.stream().filter(m -> mono.whole().get(m) == null).toList();
             }
+            if (!absent.isEmpty()) fail(tag + ": LOD terrain " + absent + " not drawn with the shader pack, even in mono");
         }
         Shot half = shot(context, tag + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
         Shot par = shot(context, tag + "_half_parallel", StereoMode.SBS_HALF, parallelIpd, 0f, false);
@@ -248,7 +268,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
             if (off.whole().get(m) == null) fail(mod + " control: vanilla " + m + " missing");
         }
         lodRendering(context, mod, true);
-        context.waitTicks(40);
+        context.waitTicks(100); // LOD reload after re-enabling
         log("%s: LOD scene", mod);
 
         Shot half = shot(context, mod + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
@@ -278,10 +298,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
 
     /** Like the video settings screen: Sodium only re-reads it on a renderer reload. */
     private static void setRenderDistance(ClientGameTestContext context, int chunks) {
-        context.runOnClient(mc -> {
-            mc.options.renderDistance().set(chunks);
-            mc.levelRenderer.allChanged();
-        });
+        context.runOnClient(mc -> StereoTestCompat.setRenderDistance(mc, chunks));
         context.waitTicks(20);
     }
 
@@ -294,14 +311,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
                     }
                 }
                 case "voxy" -> {
-                    // What Voxy's own "rendering" option does on change.
-                    if (FabricLoader.getInstance().isModLoaded("voxy")) {
-                        VoxyConfig.CONFIG.enableRendering = on;
-                        IGetVoxyRenderSystem rs = (IGetVoxyRenderSystem) mc.levelRenderer;
-                        boolean running = rs.voxy$getRenderSystem() != null;
-                        if (on && !running) rs.voxy$createRenderer();
-                        else if (!on && running) rs.voxy$shutdownRenderer();
-                    }
+                    if (FabricLoader.getInstance().isModLoaded("voxy")) StereoTestCompat.setVoxyRendering(mc, on);
                 }
                 default -> throw new IllegalArgumentException(mod);
             }
