@@ -1,5 +1,6 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
+import com.mitchellmarx.stereoscopic.config.StereoConfig;
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -31,8 +32,9 @@ public abstract class MixinFMLCommonHandler_Stereo {
     )
     private boolean stereoscopic$stereoRenderTickEnd(EventBus bus, Event event) {
         final StereoMode mode = StereoState.INSTANCE.getFrameMode();
-        final boolean stereoActive = mode != null && mode.isActive()
-            && mode.isSideBySide() && mode.isHalf();
+        // Both SBS modes post once per eye-half; FULL's 1:1 per-eye layout comes from the halved
+        // ScaledResolution (MixinScaledResolution_StereoFull), same as the rest of the GUI.
+        final boolean stereoActive = mode != null && mode.isActive() && mode.isSideBySide();
         if (!stereoActive) {
             return bus.post(event);
         }
@@ -42,16 +44,20 @@ public abstract class MixinFMLCommonHandler_Stereo {
         final int fullH = mc.displayHeight;
         final int eyeW = fullW / 2;
         final int eyeH = fullH;
+        // Same swap-aware half selection as MixinEntityRenderer_Stereo's GUI paths.
+        final boolean swap = StereoConfig.stereoSwapEyes;
+        final int leftX  = swap ? eyeW : 0;
+        final int rightX = swap ? 0    : eyeW;
 
         // LEFT eye
-        GL11.glViewport(0, 0, eyeW, eyeH);
-        StereoState.INSTANCE.enterGuiPass(0, 0, eyeW, eyeH);
+        GL11.glViewport(leftX, 0, eyeW, eyeH);
+        StereoState.INSTANCE.enterGuiPass(leftX, 0, eyeW, eyeH);
         final boolean result = bus.post(event);
         StereoState.INSTANCE.exitGuiPass();
 
         // RIGHT eye: build a fresh event — Forge phase-tracking refuses re-posting the same instance.
-        GL11.glViewport(eyeW, 0, eyeW, eyeH);
-        StereoState.INSTANCE.enterGuiPass(eyeW, 0, eyeW, eyeH);
+        GL11.glViewport(rightX, 0, eyeW, eyeH);
+        StereoState.INSTANCE.enterGuiPass(rightX, 0, eyeW, eyeH);
         if (event instanceof TickEvent.RenderTickEvent) {
             final TickEvent.RenderTickEvent original = (TickEvent.RenderTickEvent) event;
             final TickEvent.RenderTickEvent copy =

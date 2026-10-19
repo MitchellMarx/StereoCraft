@@ -1,5 +1,7 @@
 package com.mitchellmarx.stereoscopic.cursor;
 
+import com.mitchellmarx.stereoscopic.config.StereoConfig;
+import com.mitchellmarx.stereoscopic.core.StereoMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.shader.Framebuffer;
 import org.apache.logging.log4j.LogManager;
@@ -591,8 +593,8 @@ public final class CursorPresentThread {
                 final int clientH = cur[5];
                 final int relX = cx - sx;
                 final int relY = cy - sy;
-                // X scaled by 0.5 because SBS_HALF compresses each eye horizontally; Y is
-                // 1:1 but flipped (Win32 grows down, vY grows up).
+                // X scaled by 0.5 to map the full-window OS cursor into the left-eye half (both
+                // SBS modes); Y is 1:1 but flipped (Win32 grows down, vY grows up).
                 final double vx = relX * 0.5;
                 final double vy = (clientH - 1) - relY;
                 StereoCursor.setVirtualPos(vx, vy);
@@ -972,15 +974,18 @@ public final class CursorPresentThread {
     }
 
     private static void drawCursorTextureAt(int x, int y) {
-        // Half X width: each SBS half is stretched 2× horizontally by the display, so a sprite
-        // drawn at natural pixel width here would render as a 2× wide oval. Pre-compress on X
-        // (size and hotspot offset) so it lands at native dimensions after stretching. Y is
-        // unaffected — SBS only compresses horizontally.
-        final int halfW = Math.max(1, cursorTexW / 2);
-        final int halfHotX = cursorHotspotX / 2;
-        final int x0 = x - halfHotX;
+        // SBS_HALF: each half is stretched 2× horizontally by the display, so a sprite drawn at
+        // natural pixel width here would render as a 2× wide oval. Pre-compress on X (size and
+        // hotspot offset) so it lands at native dimensions after stretching. Y is unaffected —
+        // SBS only compresses horizontally. SBS_FULL displays each half as-is — draw at natural
+        // width.
+        final StereoMode mode = StereoConfig.stereoscopicMode;
+        final boolean compress = mode != null && mode.isHalf();
+        final int spriteW = compress ? Math.max(1, cursorTexW / 2) : cursorTexW;
+        final int hotX = compress ? cursorHotspotX / 2 : cursorHotspotX;
+        final int x0 = x - hotX;
         final int y0 = y - cursorHotspotY;
-        final int x1 = x0 + halfW;
+        final int x1 = x0 + spriteW;
         final int y1 = y0 + cursorTexH;
         GL11.glEnable(GL11.GL_TEXTURE_2D);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, cursorTexId);

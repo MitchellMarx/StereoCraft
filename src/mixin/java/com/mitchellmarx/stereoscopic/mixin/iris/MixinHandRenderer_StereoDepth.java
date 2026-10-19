@@ -3,10 +3,13 @@ package com.mitchellmarx.stereoscopic.mixin.iris;
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import net.coderbot.iris.pipeline.HandRenderer;
+import org.lwjgl.BufferUtils;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.nio.FloatBuffer;
 
 /**
  * Stereo-aware modelview offset for the held item. Mirrors sbs2 stereo-sbs-2's
@@ -38,5 +41,34 @@ public abstract class MixinHandRenderer_StereoDepth {
         if (dx != 0f) {
             GLStateManager.glTranslatef(dx, 0f, 0f);
         }
+    }
+
+    /**
+     * SBS_FULL aspect for the shader hand pass. {@code setupGlState} calls {@code gluPerspective}
+     * with the full-window aspect, same as vanilla {@code renderHand}; double m00 afterwards so the
+     * held item renders at the per-eye {@code (W/2)/H} aspect. Same diag(2,1,1,1) post-multiply as
+     * MixinEntityRenderer_StereoCamera's setupCameraTransform inject.
+     */
+    @Inject(
+        method = "setupGlState",
+        at = @At(
+            value = "INVOKE",
+            target = "Lorg/lwjgl/util/glu/Project;gluPerspective(FFFF)V",
+            ordinal = 0,
+            shift = At.Shift.AFTER
+        )
+    )
+    private void stereoscopic$applyFullSbsHandAspect(CallbackInfo ci) {
+        if (!StereoState.INSTANCE.isActive()) return;
+        if (!StereoState.INSTANCE.getFrameMode().isFull()) return;
+        final FloatBuffer aspect = BufferUtils.createFloatBuffer(16);
+        aspect.put(new float[] {
+            2f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f,
+            0f, 0f, 1f, 0f,
+            0f, 0f, 0f, 1f,
+        });
+        aspect.flip();
+        GLStateManager.glMultMatrix(aspect);
     }
 }

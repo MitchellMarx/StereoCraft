@@ -7,7 +7,7 @@ import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.Display;
 
 /**
- * Virtual cursor for stereo SBS_HALF + DUPLICATE rendering. While stereo+GUI is active, the OS
+ * Virtual cursor for stereo SBS (HALF and FULL) + DUPLICATE rendering. While stereo+GUI is active, the OS
  * cursor is hidden and the cursor present thread polls GetCursorPos to drive (vX, vY).
  * {@code GLSMRedirector} rewrites {@code Mouse.getX/getY/getEventX/getEventY} call sites to
  * {@code GLStateManager.stereoMouseGet*}, which delegate to this class via
@@ -90,8 +90,10 @@ public final class StereoCursor {
     public static int virtualY() { return (int) vY; }
     public static boolean isActive() { return weAreGrabbing; }
 
-    // SBS_HALF only compresses horizontally, so the GUI scaled-coord X must be doubled to cover
-    // the full left-eye GUI range; Y is unchanged.
+    // vX is in left-eye pixels (0..displayW/2), but MC maps Mouse X over the full display width,
+    // so it must be doubled to cover the full left-eye GUI range in both SBS modes: HALF lays the
+    // full-width GUI into the half, FULL halves the GUI width (MixinScaledResolution_StereoFull)
+    // and MC still divides by the full display width. Y is unchanged.
     // (Note: GLSMRedirector rewrites Mouse.getX/Y/EventX/EventY call sites to GLStateManager
     // helpers that call into these via StereoGLSMBridge's StereoHook impl.)
 
@@ -118,7 +120,7 @@ public final class StereoCursor {
     private static boolean shouldRemap() {
         final StereoMode mode = StereoConfig.stereoscopicMode;
         if (mode == null || !mode.isActive()) return false;
-        if (!mode.isSideBySide() || !mode.isHalf()) return false;
+        if (!mode.isSideBySide()) return false;
         final Minecraft mc = Minecraft.getMinecraft();
         return mc != null && mc.currentScreen != null;
     }

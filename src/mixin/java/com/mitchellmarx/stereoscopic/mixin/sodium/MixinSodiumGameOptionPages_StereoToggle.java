@@ -15,6 +15,7 @@ import me.jellysquid.mods.sodium.client.gui.options.control.TickBoxControl;
 import me.jellysquid.mods.sodium.client.gui.options.storage.AngelicaOptionsStorage;
 import net.coderbot.iris.Iris;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.ScaledResolution;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -91,6 +92,19 @@ public abstract class MixinSodiumGameOptionPages_StereoToggle {
                             Iris.getPipelineManager().destroyPipeline();
                             Iris.getPipelineManager().preparePipeline(Iris.getCurrentDimensionName());
                             Minecraft.getMinecraft().renderGlobal.loadRenderers();
+                        }
+                        // Flipping into or out of SBS_FULL changes ScaledResolution's width
+                        // (MixinScaledResolution_StereoFull), but the open screen (this options
+                        // page) was laid out against the old width. Re-init it with a fresh
+                        // ScaledResolution so its widgets match the new GUI width.
+                        final boolean fullChanged =
+                            (oldMode != null && oldMode.isFull()) != newMode.isFull();
+                        final Minecraft mc = Minecraft.getMinecraft();
+                        if (fullChanged && mc.currentScreen != null) {
+                            final ScaledResolution sr =
+                                new ScaledResolution(mc, mc.displayWidth, mc.displayHeight);
+                            mc.currentScreen.setWorldAndResolution(
+                                mc, sr.getScaledWidth(), sr.getScaledHeight());
                         }
                     },
                     opts -> StereoConfig.stereoscopicMode != null

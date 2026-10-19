@@ -14,11 +14,16 @@ public class StereoState {
     private boolean active = false;
     private long frameSequence = 0;
 
-    // While inGuiPass is true, GLStateManager.glScissor remaps caller scissor coords (assumed to
-    // be "framebuffer pixels with GUI filling the whole screen") into the current eye viewport.
-    // Set by MixinEntityRenderer_Stereo around each drawScreen / renderGameOverlay / Post-event
-    // eye pass.
+    // Marks a per-eye GUI pass and records its eye viewport. Set by MixinEntityRenderer_Stereo
+    // around each drawScreen blit / renderGameOverlay / Post-event eye pass. No hook reads it to
+    // remap scissor; the only scissor remap is the FULL one keyed on inScratchGuiDraw below.
     private boolean inGuiPass = false;
+
+    // While true, GuiScreen.drawScreen is rendering ONCE into the full-size scratch FB
+    // (MixinEntityRenderer_Stereo.stereoDrawScreen). MixinGLStateManager_StereoRemap uses it to
+    // double scissor X/width in SBS_FULL, where the half-width GUI layout is stretched 2× across
+    // the scratch but callers build scissor rects as GUI coords × scaleFactor.
+    private boolean inScratchGuiDraw = false;
 
     // While true, MixinGLStateManager_StereoRemap intercepts viewport-reset calls (those
     // targeting the full main framebuffer dimensions) and remaps them to the current eye
@@ -40,6 +45,9 @@ public class StereoState {
 
     public void exitGuiPass() { inGuiPass = false; }
     public boolean isInGuiPass() { return inGuiPass; }
+
+    public void setInScratchGuiDraw(boolean v) { inScratchGuiDraw = v; }
+    public boolean isInScratchGuiDraw() { return inScratchGuiDraw; }
 
     public void enterWorldPass(int x, int y, int w, int h) {
         inWorldPass = true;

@@ -14,6 +14,9 @@ import net.coderbot.iris.shaderpack.PackRenderTargetDirectives;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Vector2i;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
@@ -24,6 +27,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.nio.FloatBuffer;
 import java.util.List;
 import java.util.Map;
 
@@ -153,11 +157,42 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             .setPixelFormat(actualFormat.getPixelFormat())
             .build();
         stereoscopic$rightTargets[i] = mirror;
+        // Fresh GL textures have UNDEFINED contents, and Iris's full-clear pass runs against
+        // whichever bank the FBs point at when it fires — a never-cleared RIGHT-bank temporal
+        // buffer (TAA history, cloud accumulation) feeds garbage into the pack's temporal blend
+        // forever. Clear both textures now.
+        stereoscopic$clearTexture(mirror.getMainTexture());
+        stereoscopic$clearTexture(mirror.getAltTexture());
         final int packed = i << 1;
         stereoscopic$reverseMap.put(targets[i].getMainTexture(), packed);
         stereoscopic$reverseMap.put(targets[i].getAltTexture(),  packed | 1);
         stereoscopic$reverseMap.put(mirror.getMainTexture(),     packed);
         stereoscopic$reverseMap.put(mirror.getAltTexture(),      packed | 1);
+    }
+
+    /** Clear one color texture to transparent black via a throwaway FBO. Raw GL with the prior
+     *  draw-FB binding and scissor state restored, so GLStateManager's cache stays valid. */
+    @Unique
+    private static void stereoscopic$clearTexture(int texId) {
+        if (texId == 0) return;
+        final int prevDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        final boolean wasScissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        if (wasScissor) GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        final int fbo = GL30.glGenFramebuffers();
+        try {
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, fbo);
+            GL30.glFramebufferTexture2D(GL30.GL_DRAW_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0,
+                GL11.GL_TEXTURE_2D, texId, 0);
+            if (GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER) == GL30.GL_FRAMEBUFFER_COMPLETE) {
+                final FloatBuffer zero = BufferUtils.createFloatBuffer(4);
+                zero.put(new float[] { 0f, 0f, 0f, 0f }).flip();
+                GL30.glClearBuffer(GL11.GL_COLOR, 0, zero);
+            }
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
+            GL30.glDeleteFramebuffers(fbo);
+            if (wasScissor) GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        }
     }
 
     @Override
@@ -183,9 +218,11 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
         final int colortexIdx = meta >>> 1;
         final boolean isAlt = (meta & 1) == 1;
         if (colortexIdx < 0 || colortexIdx >= targets.length) return referenceTexId;
-        final RenderTarget rt = (stereoscopic$activeEye == 0)
-            ? targets[colortexIdx]
-            : (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[colortexIdx] : null);
+        // == 1, NOT != 0: the post-resize sentinel (-1) must resolve LEFT — it is set mid-LEFT-eye,
+        // and the rest of that eye's final pass would otherwise copy into the RIGHT bank.
+        final RenderTarget rt = (stereoscopic$activeEye == 1)
+            ? (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[colortexIdx] : null)
+            : targets[colortexIdx];
         if (rt == null) return referenceTexId;
         return isAlt ? rt.getAltTexture() : rt.getMainTexture();
     }
@@ -288,6 +325,9 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
                 if (rt != null) {
                     ((AccessorRenderTarget) (Object) rt).stereoscopic$resize(
                         packDirectives.getTextureScaleOverride(i, newWidth, newHeight));
+                    // Resized storage is undefined, same as a fresh mirror — clear it.
+                    stereoscopic$clearTexture(rt.getMainTexture());
+                    stereoscopic$clearTexture(rt.getAltTexture());
                 }
             }
 

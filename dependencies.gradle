@@ -8,7 +8,7 @@ dependencies {
     // RetroFuturaBootstrap — compileOnly; provides launchClassLoader for LWJGL3 reflective
     // class loading in WindowsCursorBackend / CursorPresentThread. Matches sbs2's pattern
     // (dependencies.gradle line 71).
-    compileOnly("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.7") { transitive = false }
+    compileOnly("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.17") { transitive = false }
 
     // Dev-time conveniences (matches Angelica's pattern)
     compileOnly("org.projectlombok:lombok:1.18.42") { transitive = false }

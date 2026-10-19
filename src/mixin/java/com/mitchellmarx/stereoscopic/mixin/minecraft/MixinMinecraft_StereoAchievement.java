@@ -1,5 +1,6 @@
 package com.mitchellmarx.stereoscopic.mixin.minecraft;
 
+import com.mitchellmarx.stereoscopic.config.StereoConfig;
 import com.mitchellmarx.stereoscopic.core.StereoMode;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import net.minecraft.client.Minecraft;
@@ -30,8 +31,9 @@ public class MixinMinecraft_StereoAchievement {
     )
     private void stereoscopic$stereoAchievement(GuiAchievement popup) {
         final StereoMode mode = StereoState.INSTANCE.getFrameMode();
-        final boolean stereoActive = mode != null && mode.isActive()
-            && mode.isSideBySide() && mode.isHalf();
+        // Both SBS modes draw the popup once per eye-half; FULL's 1:1 per-eye layout comes from
+        // the halved ScaledResolution (MixinScaledResolution_StereoFull).
+        final boolean stereoActive = mode != null && mode.isActive() && mode.isSideBySide();
         if (!stereoActive) {
             popup.func_146254_a();
             return;
@@ -42,9 +44,13 @@ public class MixinMinecraft_StereoAchievement {
         final int fullH = mc.displayHeight;
         final int eyeW = fullW / 2;
         final int eyeH = fullH;
+        // Same swap-aware half selection as MixinEntityRenderer_Stereo's GUI paths.
+        final boolean swap = StereoConfig.stereoSwapEyes;
+        final int leftX  = swap ? eyeW : 0;
+        final int rightX = swap ? 0    : eyeW;
 
-        GL11.glViewport(0, 0, eyeW, eyeH);
-        StereoState.INSTANCE.enterGuiPass(0, 0, eyeW, eyeH);
+        GL11.glViewport(leftX, 0, eyeW, eyeH);
+        StereoState.INSTANCE.enterGuiPass(leftX, 0, eyeW, eyeH);
         // func_146254_a's final renderItemAndEffectIntoGUI leaves GL_BLEND disabled, so the second
         // pass would render the popup background's transparent regions as opaque black. Set the
         // expected GUI blend state explicitly before each pass.
@@ -53,8 +59,8 @@ public class MixinMinecraft_StereoAchievement {
         popup.func_146254_a();
         StereoState.INSTANCE.exitGuiPass();
 
-        GL11.glViewport(eyeW, 0, eyeW, eyeH);
-        StereoState.INSTANCE.enterGuiPass(eyeW, 0, eyeW, eyeH);
+        GL11.glViewport(rightX, 0, eyeW, eyeH);
+        StereoState.INSTANCE.enterGuiPass(rightX, 0, eyeW, eyeH);
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         popup.func_146254_a();

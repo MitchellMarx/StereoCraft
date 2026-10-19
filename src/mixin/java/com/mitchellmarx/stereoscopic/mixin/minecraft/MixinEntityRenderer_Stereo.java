@@ -279,8 +279,11 @@ public abstract class MixinEntityRenderer_Stereo {
             // lighting enabled and HUD render can leave glColor in arbitrary state.
             RenderHelper.disableStandardItemLighting();
             GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            // Lets MixinGLStateManager_StereoRemap widen GUI scissor rects in SBS_FULL.
+            StereoState.INSTANCE.setInScratchGuiDraw(true);
             screen.drawScreen(mouseX, mouseY, partialTicks);
         } finally {
+            StereoState.INSTANCE.setInScratchGuiDraw(false);
             PerEyeScratchFb.setActive(false);
         }
 

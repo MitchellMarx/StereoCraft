@@ -1,6 +1,8 @@
 package com.mitchellmarx.stereoscopic.mixin.angelica;
 
 import com.gtnewhorizons.angelica.glsm.GLStateManager;
+import com.mitchellmarx.stereoscopic.config.StereoConfig;
+import com.mitchellmarx.stereoscopic.core.StereoMode;
 import com.mitchellmarx.stereoscopic.core.StereoState;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
@@ -49,6 +51,35 @@ public class MixinGLStateManager_StereoRemap {
         stereoscopic$remapping.set(Boolean.TRUE);
         try {
             GLStateManager.glViewport(eyeX, eyeY, eyeW, eyeH);
+        } finally {
+            stereoscopic$remapping.set(Boolean.FALSE);
+        }
+        ci.cancel();
+    }
+
+    /**
+     * SBS_FULL GUI scissor. The screen is drawn once into the full-size scratch FB under a
+     * half-width ortho (MixinScaledResolution_StereoFull), so every GUI unit spans 2× the
+     * horizontal pixels a {@code scaleFactor}-based scissor assumes. Callers that build scissor
+     * rects as GUI coords × scaleFactor (Reese's {@code AbstractFrame.applyScissor}, which clips
+     * the Sodium options pages) end up with X and width halved and clip their own content away.
+     * Doubling X/width during the scratch drawScreen pass puts the rect back over the stretched
+     * geometry; Y/height are untouched since FULL only halves the layout width. HALF keeps the
+     * full-width layout, so its scissor already matches the scratch.
+     *
+     * <p>Reads live {@link StereoConfig#stereoscopicMode} to agree with the ScaledResolution the
+     * caller (and the ortho) were built from.
+     */
+    @Inject(method = "glScissor(IIII)V", at = @At("HEAD"), cancellable = true)
+    private static void stereoscopic$widenFullSbsGuiScissor(int x, int y, int width, int height,
+                                                            CallbackInfo ci) {
+        if (stereoscopic$remapping.get()) return;
+        if (!StereoState.INSTANCE.isInScratchGuiDraw()) return;
+        final StereoMode mode = StereoConfig.stereoscopicMode;
+        if (mode == null || !mode.isFull()) return;
+        stereoscopic$remapping.set(Boolean.TRUE);
+        try {
+            GLStateManager.glScissor(x * 2, y, width * 2, height);
         } finally {
             stereoscopic$remapping.set(Boolean.FALSE);
         }

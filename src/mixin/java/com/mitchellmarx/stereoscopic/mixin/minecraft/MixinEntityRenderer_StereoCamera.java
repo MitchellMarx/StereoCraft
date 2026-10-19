@@ -95,6 +95,38 @@ public abstract class MixinEntityRenderer_StereoCamera {
     }
 
     /**
+     * SBS_FULL aspect for the vanilla (shaders-off) held-item pass. {@code renderHand} rebuilds
+     * the projection with its own {@code gluPerspective} at the full-window aspect, so the m00×2
+     * applied in {@code setupCameraTransform} above doesn't reach it and the hand comes out
+     * squeezed 2× in FULL. Same diag(2,1,1,1) post-multiply, same reasoning; no convergence shear
+     * here because the hand path never had one. Iris's own hand pass is covered by
+     * MixinHandRenderer_StereoDepth.
+     */
+    @Inject(
+        method = "renderHand",
+        at = @At(
+            value = "INVOKE",
+            target = "Lorg/lwjgl/util/glu/Project;gluPerspective(FFFF)V",
+            ordinal = 0,
+            shift = At.Shift.AFTER,
+            remap = false
+        )
+    )
+    private void stereoscopic$applyFullSbsHandAspect(float partialTicks, int pass, CallbackInfo ci) {
+        if (!StereoState.INSTANCE.isActive()) return;
+        if (!StereoState.INSTANCE.getFrameMode().isFull()) return;
+        final FloatBuffer aspect = BufferUtils.createFloatBuffer(16);
+        aspect.put(new float[] {
+            2f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f,
+            0f, 0f, 1f, 0f,
+            0f, 0f, 0f, 1f,
+        });
+        aspect.flip();
+        GLStateManager.glMultMatrix(aspect);
+    }
+
+    /**
      * Modelview offset anchored on {@code hurtCameraEffect} — the first vanilla call after the
      * modelview is loaded with identity. {@code Minecraft.getMinecraft()} would be earlier but
      * is unreliable across remap settings.
