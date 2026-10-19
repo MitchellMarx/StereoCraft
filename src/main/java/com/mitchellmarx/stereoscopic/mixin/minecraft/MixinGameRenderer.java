@@ -364,19 +364,10 @@ public abstract class MixinGameRenderer {
                 int h = realMainFb.height;
                 TextureTarget scratch = PerEyeRenderer.ensureScratchFb(w, h);
 
-                // Mojang's Camera exposes getLeftVector() — local LEFT direction.
-                // Yarn's getDiagonalPlane() is the local RIGHT vector. We need
-                // RIGHT, so negate Left. Write Camera.position field directly:
-                // both setPosition overloads are wrapped by Sable mixins that
-                // NPE when Camera.entity is null (briefly true during world
-                // load / dimension transition). Direct field write mirrors
-                // vanilla setPosition(Vec3) bytecode exactly, sidestepping the
-                // wraps so per-eye IPD shift works during world load too.
-                float dx = StereoState.INSTANCE.getEyeOffset();
-                Vector3f left = camera.getLeftVector();
-                Vec3 eyePos = basePos.add(-left.x() * dx, -left.y() * dx, -left.z() * dx);
-                cameraAcc.stereoscopic$setPositionField(eyePos);
-                cameraAcc.stereoscopic$getBlockPositionField().set(eyePos.x, eyePos.y, eyePos.z);
+                // The per-eye camera shift is applied AFTER Camera.setup inside
+                // renderLevel (stereoscopic$applyEyeOffsetAfterSetup) — setup
+                // resets the position from the entity, so a write here would
+                // be overwritten.
 
                 PerEyeRenderer.setScratchFbActive(true);
                 try {
@@ -424,10 +415,50 @@ public abstract class MixinGameRenderer {
                 stereoscopic$blitScratchToMain(scratch, realMainFb, w, h);
             });
         } finally {
-            cameraAcc.stereoscopic$setPositionField(basePos);
-            cameraAcc.stereoscopic$getBlockPositionField().set(basePos.x, basePos.y, basePos.z);
+            // Leave the camera at this frame's mono position (set after setup),
+            // not the pre-setup basePos from the previous frame.
+            Vec3 mono = StereoState.INSTANCE.getFrameMonoCameraPos();
+            Vec3 restore = mono != null ? mono : basePos;
+            cameraAcc.stereoscopic$setPositionField(restore);
+            cameraAcc.stereoscopic$getBlockPositionField().set(restore.x, restore.y, restore.z);
             StereoState.INSTANCE.setFrameMonoCameraPos(null);
         }
+    }
+
+    /**
+     * Per-eye IPD shift, applied right after {@code camera.setup(...)} inside
+     * {@code renderLevel}. Setup recomputes the camera position from the
+     * entity on every call, so shifting before {@code renderLevel} (as
+     * v0.1.2–v0.3.0 did) was silently overwritten: the eyes differed only by
+     * the convergence shear, i.e. a flat image with no depth. Caught by the
+     * self-test's parallel-disparity check (0.00 px for every marker).
+     *
+     * <p>Camera.getLeftVector() is the local LEFT direction (Yarn's
+     * getDiagonalPlane() is the same vector); negate for RIGHT. Position is
+     * written to the fields directly: both setPosition overloads are wrapped
+     * by Sable mixins that NPE when Camera.entity is null (briefly true during
+     * world load / dimension transition). The direct write mirrors vanilla
+     * setPosition(Vec3) bytecode exactly.
+     */
+    @Inject(
+        method = "renderLevel(Lnet/minecraft/client/DeltaTracker;)V",
+        at = @At(value = "INVOKE",
+                 target = "Lnet/minecraft/client/Camera;setup(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/world/entity/Entity;ZZF)V",
+                 shift = At.Shift.AFTER)
+    )
+    private void stereoscopic$applyEyeOffsetAfterSetup(DeltaTracker tickCounter, CallbackInfo ci) {
+        StereoState s = StereoState.INSTANCE;
+        if (!s.isActive() || s.getCurrentEye() == StereoState.Eye.MONO || !PerEyeRenderer.isScratchFbActive()) return;
+        Camera camera = ((GameRenderer) (Object) this).getMainCamera();
+        Vec3 mono = camera.getPosition();
+        // Shared passes (Iris shadow render, Sodium chunk setup) restore this.
+        s.setFrameMonoCameraPos(mono);
+        float dx = s.getEyeOffset();
+        Vector3f left = camera.getLeftVector();
+        Vec3 eyePos = mono.add(-left.x() * dx, -left.y() * dx, -left.z() * dx);
+        CameraAccessor acc = (CameraAccessor) (Object) camera;
+        acc.stereoscopic$setPositionField(eyePos);
+        acc.stereoscopic$getBlockPositionField().set(eyePos.x, eyePos.y, eyePos.z);
     }
 
     /**

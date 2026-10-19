@@ -33,10 +33,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
  * mirrors exactly what {@code setPosition(Vec3)} does in vanilla 1.21.1 (read
  * from {@code Camera.class} bytecode: assign {@code position} field, then
  * {@code blockPosition.set(vec.x, vec.y, vec.z)}). Bypassing Sable's wraps is
- * correct here because the {@code basePos} we read back was already
- * Sable-transformed by the original {@code Camera.setup} call earlier in
- * {@code renderLevel}; we just add a small IPD offset along the camera's
- * already-transformed local right vector.
+ * correct here because the position we read back was already
+ * Sable-transformed by {@code Camera.setup} — the shift is applied right
+ * after that call inside {@code renderLevel} — and we just add a small IPD
+ * offset along the camera's already-transformed local right vector.
  */
 @Mixin(Camera.class)
 public interface CameraAccessor {
