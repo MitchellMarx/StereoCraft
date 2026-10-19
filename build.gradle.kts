@@ -37,6 +37,18 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// Visual stereo harness (src/gametest): `./gradlew runClientGameTest`.
+// Separate source set + mod id; never part of the shipped jar.
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "stereoscopic-test"
+        enableGameTests = false
+        enableClientGameTests = true
+        eula = true
+    }
+}
+
 loom {
     runs {
         named("client") {

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "stereoscopic-test",
+  "version": "1.0.0",
+  "name": "StereoCraft visual test harness",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": ["com.mitchellmarx.stereoscopic.test.StereoClientGameTest"]
+  },
+  "depends": { "stereoscopic": "*" }
+}
