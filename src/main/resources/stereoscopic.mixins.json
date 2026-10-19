@@ -17,6 +17,8 @@
     "minecraft.MouseAccessor",
     "minecraft.CameraAccessor",
     "minecraft.MixinMinecraftClient",
+    "minecraft.MixinRotatingCubeMapRenderer",
+    "minecraft.MixinCubeMapRenderer",
     "sodium.MixinSodiumWorldRenderer",
     "sodium.MixinViewport"
   ],

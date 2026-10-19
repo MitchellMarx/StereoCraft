@@ -9,7 +9,12 @@ import com.mitchellmarx.stereoscopic.core.StereoState;
 import com.mitchellmarx.stereoscopic.Stereoscopic;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.GpuTexture;
+import net.minecraft.client.gl.Framebuffer;
 import net.minecraft.client.gl.SimpleFramebuffer;
+import net.minecraft.client.texture.GlTexture;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 public final class PerEyeRenderer {
 
@@ -49,6 +54,56 @@ public final class PerEyeRenderer {
         }
         scratchFbW = -1;
         scratchFbH = -1;
+    }
+
+    /**
+     * Blit the full scratch FB color into an arbitrary dest rect on {@code mainFb},
+     * scaling with {@code GL_LINEAR}. Used by the menu panorama: render the cube
+     * map once (mono, full) into scratch, then squish the full image into each
+     * eye-half. Decouples per-eye SBS from the cube map's own
+     * {@code RenderSystem.setProjectionMatrix} upload.
+     */
+    public static void blitScratchColorToRect(SimpleFramebuffer scratch, Framebuffer mainFb,
+                                              int dstX0, int dstY0, int dstX1, int dstY1) {
+        if (scratch == null || scratch.getColorAttachment() == null) return;
+        if (mainFb == null || mainFb.getColorAttachment() == null) return;
+        int srcTex = stereoscopic$glId(scratch.getColorAttachment());
+        int dstTex = stereoscopic$glId(mainFb.getColorAttachment());
+        if (srcTex == 0 || dstTex == 0) return;
+        int srcW = scratch.textureWidth;
+        int srcH = scratch.textureHeight;
+
+        int prevDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        int prevRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+        boolean wasScissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+        if (wasScissor) GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        int readFbo = GL30.glGenFramebuffers();
+        int drawFbo = GL30.glGenFramebuffers();
+        try {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readFbo);
+            GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, srcTex, 0);
+            GL11.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0);
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, drawFbo);
+            GL30.glFramebufferTexture2D(GL30.GL_DRAW_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, dstTex, 0);
+            GL11.glDrawBuffer(GL30.GL_COLOR_ATTACHMENT0);
+            if (GL30.glCheckFramebufferStatus(GL30.GL_READ_FRAMEBUFFER) == GL30.GL_FRAMEBUFFER_COMPLETE
+             && GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER) == GL30.GL_FRAMEBUFFER_COMPLETE) {
+                GL30.glBlitFramebuffer(0, 0, srcW, srcH, dstX0, dstY0, dstX1, dstY1,
+                    GL11.GL_COLOR_BUFFER_BIT, GL11.GL_LINEAR);
+            }
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevRead);
+            GL30.glDeleteFramebuffers(readFbo);
+            GL30.glDeleteFramebuffers(drawFbo);
+            if (wasScissor) GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        }
+    }
+
+    /** Direct cast + call, NOT reflection by Yarn name (Yarn names don't exist at runtime in prod). */
+    private static int stereoscopic$glId(GpuTexture tex) {
+        if (tex instanceof GlTexture gl) return gl.getGlId();
+        return 0;
     }
 
     public static void viewportRaw(int x, int y, int w, int h) {
