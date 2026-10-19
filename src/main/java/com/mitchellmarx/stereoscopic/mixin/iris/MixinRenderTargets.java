@@ -134,11 +134,40 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             .setPixelFormat(settings.getInternalFormat().getPixelFormat())
             .build();
         stereoscopic$rightTargets[i] = mirror;
+        // Fresh GL textures have UNDEFINED contents, and Iris's full-clear
+        // pass runs against whichever bank the FBs point at when it fires
+        // (on resize: once, mid-LEFT-eye) — a never-cleared RIGHT-bank
+        // temporal buffer (TAA history, cloud accumulation) feeds garbage
+        // into the pack's temporal blend forever. Clear both textures now.
+        stereoscopic$clearTexture(mirror.getMainTexture());
+        stereoscopic$clearTexture(mirror.getAltTexture());
         int packed = i << 1;
         stereoscopic$reverseMap.put(targets[i].getMainTexture(), packed);
         stereoscopic$reverseMap.put(targets[i].getAltTexture(),  packed | 1);
         stereoscopic$reverseMap.put(mirror.getMainTexture(),     packed);
         stereoscopic$reverseMap.put(mirror.getAltTexture(),      packed | 1);
+    }
+
+    @Unique
+    private static void stereoscopic$clearTexture(int texId) {
+        if (texId == 0) return;
+        int prevDraw = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        boolean wasScissor = org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+        if (wasScissor) org.lwjgl.opengl.GL11.glDisable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+        int fbo = org.lwjgl.opengl.GL30.glGenFramebuffers();
+        try {
+            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER, fbo);
+            org.lwjgl.opengl.GL30.glFramebufferTexture2D(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER,
+                org.lwjgl.opengl.GL30.GL_COLOR_ATTACHMENT0, org.lwjgl.opengl.GL11.GL_TEXTURE_2D, texId, 0);
+            if (org.lwjgl.opengl.GL30.glCheckFramebufferStatus(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER)
+                    == org.lwjgl.opengl.GL30.GL_FRAMEBUFFER_COMPLETE) {
+                org.lwjgl.opengl.GL30.glClearBufferfv(org.lwjgl.opengl.GL11.GL_COLOR, 0, new float[]{0f, 0f, 0f, 0f});
+            }
+        } finally {
+            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
+            org.lwjgl.opengl.GL30.glDeleteFramebuffers(fbo);
+            if (wasScissor) org.lwjgl.opengl.GL11.glEnable(org.lwjgl.opengl.GL11.GL_SCISSOR_TEST);
+        }
     }
 
     @Override
@@ -218,9 +247,12 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             int colortexIdx = meta >>> 1;
             boolean isAlt = (meta & 1) == 1;
             if (colortexIdx < 0 || colortexIdx >= targets.length) return referenceTexId;
-            RenderTarget rt = (stereoscopic$activeEye == 0)
-                ? targets[colortexIdx]
-                : (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[colortexIdx] : null);
+            // == 1, NOT != 0: the post-resize sentinel (-1) must resolve LEFT —
+            // it is set mid-LEFT-eye, and the rest of that eye's final pass would
+            // otherwise copy into the RIGHT bank. Same for the depth branches below.
+            RenderTarget rt = (stereoscopic$activeEye == 1)
+                ? (stereoscopic$rightTargets != null ? stereoscopic$rightTargets[colortexIdx] : null)
+                : targets[colortexIdx];
             if (rt == null) return referenceTexId;
             return isAlt ? rt.getAltTexture() : rt.getMainTexture();
         }
@@ -233,14 +265,14 @@ public abstract class MixinRenderTargets implements PerEyeRenderTargetHooks.EyeA
             int leftNoTransId  = stereoscopic$leftNoTranslucents.getTextureId();
             int rightNoTransId = stereoscopic$rightNoTranslucents.getTextureId();
             if (referenceTexId == leftNoTransId || referenceTexId == rightNoTransId) {
-                return stereoscopic$activeEye == 0 ? leftNoTransId : rightNoTransId;
+                return stereoscopic$activeEye == 1 ? rightNoTransId : leftNoTransId;
             }
         }
         if (stereoscopic$leftNoHand != null && stereoscopic$rightNoHand != null) {
             int leftNoHandId  = stereoscopic$leftNoHand.getTextureId();
             int rightNoHandId = stereoscopic$rightNoHand.getTextureId();
             if (referenceTexId == leftNoHandId || referenceTexId == rightNoHandId) {
-                return stereoscopic$activeEye == 0 ? leftNoHandId : rightNoHandId;
+                return stereoscopic$activeEye == 1 ? rightNoHandId : leftNoHandId;
             }
         }
         return referenceTexId;

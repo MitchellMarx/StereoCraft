@@ -59,7 +59,7 @@ public final class SodiumOptionsPageIntegration {
                     Component.translatable("stereoscopic.options.mode.sbs_half"),
                     Component.translatable("stereoscopic.options.mode.sbs_full")
                 }))
-                .setBinding((s, v) -> s.mode = v, s -> s.mode)
+                .setBinding(StereoOptionStorage.INSTANCE::applyMode, s -> s.mode)
                 .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                 .setImpact(OptionImpact.LOW)
                 .build())
