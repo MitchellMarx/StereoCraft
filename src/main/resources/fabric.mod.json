@@ -19,7 +19,8 @@
   },
   "mixins": [
     "stereoscopic.mixins.json",
-    { "config": "stereoscopic-iris.mixins.json", "environment": "client" }
+    { "config": "stereoscopic-iris.mixins.json", "environment": "client" },
+    { "config": "stereoscopic-voxy.mixins.json", "environment": "client" }
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",

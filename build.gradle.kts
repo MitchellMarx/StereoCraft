@@ -54,6 +54,29 @@ fabricApi {
         eula = true
     }
 }
+dependencies {
+    // Gametest's LOD passes (Distant Horizons / Voxy terrain beyond vanilla
+    // render distance); -Pstereoscopic.noDh / -Pstereoscopic.noVoxy run without.
+    "modGametestCompileOnly"("maven.modrinth:distanthorizons:${project.property("dh_version")}")
+    "modGametestCompileOnly"("maven.modrinth:voxy:${project.property("voxy_test_version")}")
+    if (!project.hasProperty("stereoscopic.noDh")) {
+        "modGametestRuntimeOnly"("maven.modrinth:distanthorizons:${project.property("dh_version")}")
+    }
+    if (!project.hasProperty("stereoscopic.noVoxy")) {
+        "modGametestRuntimeOnly"("maven.modrinth:voxy:${project.property("voxy_test_version")}")
+        // Voxy's jar-in-jar libraries, missing from the remapping dev runtime
+        // like Iris's above (NoClassDefFoundError org.rocksdb.RocksDBException).
+        "gametestRuntimeOnly"("org.rocksdb:rocksdbjni:10.2.1")
+        "gametestRuntimeOnly"("org.apache.commons:commons-pool2:2.12.0")
+        "gametestRuntimeOnly"("redis.clients:jedis:5.1.0")
+        "gametestRuntimeOnly"("org.lz4:lz4-java:1.8.0")
+        "gametestRuntimeOnly"("org.tukaani:xz:1.10")
+        for (lib in listOf("lwjgl-lmdb", "lwjgl-zstd")) {
+            "gametestRuntimeOnly"("org.lwjgl:$lib:3.3.3")
+            "gametestRuntimeOnly"("org.lwjgl:$lib:3.3.3:natives-windows")
+        }
+    }
+}
 tasks.matching { it.name == "runClientGameTest" }.configureEach {
     // Shader pass of the stereo gametest (skipped if the pack is absent).
     (this as JavaExec).systemProperty("stereoscopic.test.shaderpack",
@@ -62,7 +85,40 @@ tasks.matching { it.name == "runClientGameTest" }.configureEach {
     (project.findProperty("stereoscopic.testBisect") as String?)?.let { systemProperty("stereoscopic.test.bisect", it) }
     // StereoMixinAudit reads the transformed classes to prove every injector injected.
     systemProperty("mixin.debug.export", "true")
+    // A loader error (e.g. incompatible test mods) exits instead of waiting on an error window.
+    systemProperty("fabric.noGui", "true")
+    // Bounded heap: the default (1/4 of RAM) plus LOD mods' native memory has
+    // exhausted the commit limit (native OOM in Sodium's chunk meshing).
+    jvmArgs("-Xmx6G")
+    // Verdict comes from the test's result file, not the exit status (the
+    // test halts the JVM when DH is loaded; a forced halt exits 0xC0000409).
+    val result = file("build/run/clientGameTest/stereo-test-result.txt")
+    isIgnoreExitValue = true
+    doFirst { result.delete() }
+    doLast {
+        val text = if (result.isFile) result.readText() else "no result file (client crashed before finishing)"
+        if (!text.startsWith("PASS")) throw GradleException("Stereo test failed:\n$text")
+        logger.lifecycle("Stereo test: PASS")
+    }
     if (project.hasProperty("stereoscopic.probeTaa")) systemProperty("stereoscopic.test.probeTaa", "true")
+    if (project.hasProperty("stereoscopic.lodOnly")) systemProperty("stereoscopic.test.lodOnly", "true")
+    systemProperty("stereoscopic.test.knownBroken", (project.findProperty("test_known_broken") as String?) ?: "")
+}
+// Full stereo suite: `./gradlew stereoTest`. DH and Voxy each get their own
+// client (both in one JVM runs out of memory); the Voxy client runs only the
+// LOD passes, the DH client everything else too.
+val gradlew = if (System.getProperty("os.name").startsWith("Windows")) "gradlew.bat" else "./gradlew"
+val stereoTestDh by tasks.registering(Exec::class) {
+    commandLine(file(gradlew).path, "runClientGameTest", "-Pstereoscopic.noVoxy")
+}
+val stereoTestVoxy by tasks.registering(Exec::class) {
+    commandLine(file(gradlew).path, "runClientGameTest", "-Pstereoscopic.noDh", "-Pstereoscopic.lodOnly")
+    mustRunAfter(stereoTestDh)
+}
+tasks.register("stereoTest") {
+    group = "verification"
+    description = "Stereo gametest: vanilla, shaders, Distant Horizons, Voxy"
+    dependsOn(stereoTestDh, stereoTestVoxy)
 }
 
 loom {

@@ -1,0 +1,11 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.mitchellmarx.stereoscopic.mixin.voxy",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "MixinVoxyPreviousMat"
+  ],
+  "mixins": [],
+  "injectors": { "defaultRequire": 0 }
+}
