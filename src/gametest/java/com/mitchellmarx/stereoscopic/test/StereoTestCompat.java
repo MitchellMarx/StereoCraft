@@ -54,4 +54,8 @@ final class StereoTestCompat {
     static String particleCommand(String pos) {
         return "particle minecraft:block_marker{block_state:{Name:\"minecraft:cyan_wool\"}} " + pos + " 0 0 0 0 1 force";
     }
+
+    static Path screenshot(ClientGameTestContext context, String name) {
+        return context.takeScreenshot(name);
+    }
 }
