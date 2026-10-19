@@ -78,8 +78,22 @@ tasks.matching { it.name == "runClientGameTest" }.configureEach {
     systemProperty("mixin.debug.export", "true")
     // A loader error (e.g. incompatible test mods) exits instead of waiting on an error window.
     systemProperty("fabric.noGui", "true")
+    // Bounded heap: the default (1/4 of RAM) plus LOD mods' native memory has
+    // exhausted the commit limit (native OOM in Sodium's chunk meshing).
+    jvmArgs("-Xmx6G")
+    // Verdict comes from the test's result file, not the exit status (the
+    // test halts the JVM when DH is loaded; a forced halt exits 0xC0000409).
+    val result = file("build/run/clientGameTest/stereo-test-result.txt")
+    isIgnoreExitValue = true
+    doFirst { result.delete() }
+    doLast {
+        val text = if (result.isFile) result.readText() else "no result file (client crashed before finishing)"
+        if (!text.startsWith("PASS")) throw GradleException("Stereo test failed:\n$text")
+        logger.lifecycle("Stereo test: PASS")
+    }
     if (project.hasProperty("stereoscopic.probeTaa")) systemProperty("stereoscopic.test.probeTaa", "true")
     if (project.hasProperty("stereoscopic.lodOnly")) systemProperty("stereoscopic.test.lodOnly", "true")
+    systemProperty("stereoscopic.test.knownBroken", (project.findProperty("test_known_broken") as String?) ?: "")
 }
 // Full stereo suite: `./gradlew stereoTest`. DH and Voxy each get their own
 // client (both in one JVM runs out of memory); the Voxy client runs only the

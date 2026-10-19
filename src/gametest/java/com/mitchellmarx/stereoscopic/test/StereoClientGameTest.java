@@ -28,18 +28,23 @@ import java.util.Map;
 
 /**
  * Automated stereo correctness test. Builds a fixed scene (wool pillars =
- * Sodium terrain at three depths, a NoAI sheep = entity), screenshots it under
- * each stereo configuration, measures per-eye marker positions from the
- * screenshot pixels ({@link StereoMetrics}) and fails on:
+ * Sodium terrain at three depths, a NoAI sheep = entity, a block_marker
+ * particle), screenshots it under each stereo configuration, measures per-eye
+ * marker positions from the screenshot pixels ({@link StereoMetrics}) and
+ * fails on:
  * <ul>
  *   <li>any marker missing from either eye (dropped entities / terrain);</li>
  *   <li>swapEyes not mirroring every disparity;</li>
  *   <li>parallel-camera disparity with the wrong sign or not shrinking with depth;</li>
- *   <li>terrain and entities disagreeing on the convergence shift (issue #5);</li>
+ *   <li>a renderer applying a different eye separation (disparity x depth);</li>
+ *   <li>terrain, entities and particles disagreeing on the convergence shift (issue #5);</li>
  *   <li>SBS_FULL / SBS_HALF per-eye aspect wrong;</li>
+ *   <li>eyes differing at zero IPD (one-eye artifacts);</li>
  *   <li>markers lost after a window resize mid-stereo.</li>
  * </ul>
- * Run: {@code ./gradlew runClientGameTest}. Screenshots stay in
+ * The same checks run with the shader pack (TAA on/off) and on a far scene
+ * drawn only by Distant Horizons / Voxy ({@link #lodPass}).
+ * Run: {@code ./gradlew stereoTest}. Screenshots stay in
  * {@code build/run/clientGameTest/screenshots} for inspection.
  */
 @SuppressWarnings("UnstableApiUsage")
@@ -69,6 +74,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
 
     private final List<String> failures = new ArrayList<>();
     private TestServerContext server;
+    private TestSingleplayerContext sp;
     // Active scene: switched by lodPass.
     private Map<Marker, Double> depth = NEAR_DEPTH;
     private String particleAt = NEAR_PARTICLE;
@@ -77,6 +83,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext sp = context.worldBuilder().create()) {
+            this.sp = sp;
             server = sp.getServer();
             // Superflat: surface at y=-61, player feet at y=-60. Camera faces +Z.
             // Markers stay within the narrower SBS_FULL per-eye FOV.
@@ -98,7 +105,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
             server.runCommand("summon minecraft:sheep -4.5 -60 -20.5 {NoAI:1b,Silent:1b,Color:2b,Rotation:[90f,0f]}");
             server.runCommand("tp @p 0.5 -60 0.5 0 10");
             StereoTestCompat.waitForChunksRender(sp);
-            context.getInput().pressKey(o -> o.keyToggleGui); // hide HUD (F1)
+            StereoTestCompat.hideHud(context);
             context.waitTicks(20);
 
             // -Dstereoscopic.test.lodOnly: only the LOD passes (the second
@@ -127,26 +134,33 @@ public class StereoClientGameTest implements FabricClientGameTest {
             }
 
             // After rendering with shaders, every target class is loaded.
-            Path gameDir = context.computeOnClient(mc -> mc.gameDirectory.toPath());
+            Path gameDir = context.computeOnClient(mc -> StereoTestCompat.gameDir(mc));
             List<String> configs = new ArrayList<>(List.of("stereoscopic.mixins.json", "stereoscopic-iris.mixins.json"));
             if (FabricLoader.getInstance().isModLoaded("voxy")) configs.add("stereoscopic-voxy.mixins.json");
             if (FabricLoader.getInstance().isModLoaded("distanthorizons")) configs.add("stereoscopic-dh.mixins.json");
+            configs.removeIf(c -> StereoClientGameTest.class.getClassLoader().getResource(c) == null); // not on this branch
             for (String f : StereoMixinAudit.audit(gameDir, configs.toArray(String[]::new))) fail("mixin: " + f);
             log("mixin audit: %d injectors/accessors verified", StereoMixinAudit.verified);
             if (StereoMixinAudit.verified < 20) fail("mixin audit verified only " + StereoMixinAudit.verified + " injectors — audit broken?");
 
-            if (FabricLoader.getInstance().isModLoaded("distanthorizons")) {
-                // With DH loaded, leaving the world deadlocks the gametest
-                // harness (render thread in IntegratedServer.halt waiting on
-                // the server thread, which waits in the gametest tick phaser)
-                // — after every check has run. Report and exit here instead.
-                Stereoscopic.LOG.info("[stereo-test] {}", verdict());
-                Runtime.getRuntime().halt(failures.isEmpty() ? 0 : 1);
+            // The verdict goes to RESULT_FILE (the gradle task fails unless it
+            // reads PASS), not the exit status: with DH loaded, leaving the
+            // world deadlocks the gametest harness (render thread in
+            // IntegratedServer.halt waiting on the server thread, which waits
+            // in the gametest tick phaser), so the JVM is halted here, and a
+            // forced halt exits with 0xC0000409 on Windows.
+            Stereoscopic.LOG.info("[stereo-test] {}", verdict());
+            try {
+                Files.writeString(gameDir.resolve(RESULT_FILE), failures.isEmpty() ? "PASS\n" : "FAIL\n  " + verdict() + "\n");
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             }
+            if (FabricLoader.getInstance().isModLoaded("distanthorizons")) Runtime.getRuntime().halt(0);
         }
         if (!failures.isEmpty()) throw new AssertionError(verdict());
-        Stereoscopic.LOG.info("[stereo-test] {}", verdict());
     }
+
+    static final String RESULT_FILE = "stereo-test-result.txt";
 
     /** Vanilla scene (Sodium terrain, entity, particle) in every mode, plus a mid-stereo resize. */
     private void nearPass(ClientGameTestContext context) {
@@ -194,7 +208,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
         String name = src.getFileName().toString();
         context.runOnClient(mc -> {
             try {
-                Path dir = mc.gameDirectory.toPath().resolve("shaderpacks");
+                Path dir = StereoTestCompat.gameDir(mc).resolve("shaderpacks");
                 Files.createDirectories(dir);
                 Files.copy(src, dir.resolve(name), StandardCopyOption.REPLACE_EXISTING);
                 Files.writeString(dir.resolve(name + ".txt"), packOptions); // Iris per-pack options
@@ -218,7 +232,16 @@ public class StereoClientGameTest implements FabricClientGameTest {
                 Shot mono = shot(context, tag + "_mono", StereoMode.OFF, IPD, CONV, false);
                 absent = TERRAIN.stream().filter(m -> mono.whole().get(m) == null).toList();
             }
+            boolean known = knownBroken(tag);
+            if (!absent.isEmpty() && known) {
+                // Listed in gradle.properties (test_known_broken) with the
+                // baseline evidence: not drawn even with stereo never enabled.
+                log("%s: KNOWN-BROKEN upstream — LOD terrain %s not drawn with the shader pack, even in mono; stereo not checkable", tag, absent);
+                disableShaders(context);
+                return;
+            }
             if (!absent.isEmpty()) fail(tag + ": LOD terrain " + absent + " not drawn with the shader pack, even in mono");
+            if (known) log("%s: listed as known-broken but now renders — remove it from test_known_broken", tag);
         }
         Shot half = shot(context, tag + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
         Shot par = shot(context, tag + "_half_parallel", StereoMode.SBS_HALF, parallelIpd, 0f, false);
@@ -243,7 +266,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
      */
     private void lodPass(ClientGameTestContext context, TestSingleplayerContext sp, String mod) {
         for (String other : List.of("dh", "voxy")) lodRendering(context, other, other.equals(mod));
-        int nearRenderDistance = context.computeOnClient(mc -> mc.options.renderDistance().get());
+        int nearRenderDistance = context.computeOnClient(mc -> StereoTestCompat.renderDistance(mc));
         // Load the LOD scene's chunks client-side (LOD mods ingest loaded
         // chunks), then view it from the start position with vanilla render
         // distance too short to reach the pillars.
@@ -269,6 +292,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
         }
         lodRendering(context, mod, true);
         context.waitTicks(100); // LOD reload after re-enabling
+        awaitLodSettled(context, mod);
         log("%s: LOD scene", mod);
 
         Shot half = shot(context, mod + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
@@ -296,6 +320,29 @@ public class StereoClientGameTest implements FabricClientGameTest {
         context.waitTicks(20);
     }
 
+    /**
+     * LOD mods keep refining detail after (re)loading; a pillar whose LOD
+     * changes between the shots of one check reads as a disparity error. Wait
+     * (mono, up to ~16 s) until every LOD pillar's bounding box is identical
+     * in two consecutive shots.
+     */
+    private void awaitLodSettled(ClientGameTestContext context, String mod) {
+        set(context, StereoMode.OFF, IPD, CONV, false);
+        String prev = null;
+        for (int i = 0; i < 8; i++) {
+            Shot s = capture(context, mod + "_settle");
+            StringBuilder sb = new StringBuilder();
+            for (Marker m : TERRAIN) {
+                StereoMetrics.Blob b = s.whole().get(m);
+                sb.append(b == null ? "-" : b.minX() + "," + b.maxX() + "," + b.minY() + "," + b.maxY()).append(';');
+            }
+            if (sb.toString().equals(prev)) return;
+            prev = sb.toString();
+            context.waitTicks(40);
+        }
+        log("%s: LOD terrain still changing after the settle wait", mod);
+    }
+
     /** Like the video settings screen: Sodium only re-reads it on a renderer reload. */
     private static void setRenderDistance(ClientGameTestContext context, int chunks) {
         context.runOnClient(mc -> StereoTestCompat.setRenderDistance(mc, chunks));
@@ -317,6 +364,14 @@ public class StereoClientGameTest implements FabricClientGameTest {
             }
         });
         context.waitTicks(20);
+    }
+
+    /** -Dstereoscopic.test.knownBroken=voxy_shaders,...: pass-tag prefixes broken upstream on this branch. */
+    private static boolean knownBroken(String tag) {
+        for (String k : System.getProperty("stereoscopic.test.knownBroken", "").split(",")) {
+            if (!k.isBlank() && tag.startsWith(k.trim())) return true;
+        }
+        return false;
     }
 
     private static void disableShaders(ClientGameTestContext context) {
@@ -408,7 +463,10 @@ public class StereoClientGameTest implements FabricClientGameTest {
             if (d == null || ds == null) continue;
             log("%s/%s %s: disp %+.2f vs swapped %+.2f", normal.name(), swapped.name(), m, d, ds);
             if (Math.abs(d) < 0.3) continue; // too small to tell a mirror from noise
-            if (Math.abs(d + ds) > 0.6) {
+            // Two separate renders: allow each ~0.3 px of measurement noise,
+            // more on small far LOD targets (up to 25% of the disparity). A
+            // no-op swap is off by 2|d|, a wrong sign by far more.
+            if (Math.abs(d + ds) > Math.max(0.6, 0.25 * Math.abs(d))) {
                 fail(String.format("%s: swapEyes does not mirror %s disparity (%+.2f vs %+.2f)", swapped.name(), m, d, ds));
             }
         }
@@ -520,7 +578,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
      * pipeline rebuild so the per-eye banks match, GUI re-layout). Waits for
      * the rebuild when the mode changed.
      */
-    private static void set(ClientGameTestContext context, StereoMode mode, float ipd, float conv, boolean swap) {
+    private void set(ClientGameTestContext context, StereoMode mode, float ipd, float conv, boolean swap) {
         boolean changed = context.computeOnClient(mc -> {
             StereoOptions o = StereoOptions.INSTANCE;
             o.ipd = ipd;
@@ -529,10 +587,13 @@ public class StereoClientGameTest implements FabricClientGameTest {
             if (o.mode == mode) return false;
             o.mode = mode;
             com.mitchellmarx.stereoscopic.compat.iris.PerEyeRenderTargetHooks.rebuildPipelineForStereoToggle();
-            mc.resizeGui();
+            StereoTestCompat.resizeGui(mc);
             return true;
         });
-        if (changed) context.waitTicks(60);
+        if (changed) {
+            context.waitTicks(60);
+            StereoTestCompat.waitForChunksRender(sp); // the rebuild reloads chunks
+        }
     }
 
     private Shot shot(ClientGameTestContext context, String name, StereoMode mode, float ipd, float conv, boolean swap) {
@@ -545,7 +606,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
      * cyan-wool block_marker billboard (80-tick lifetime) in the active scene.
      */
     private Shot capture(ClientGameTestContext context, String name) {
-        server.runCommand("particle minecraft:block_marker{block_state:{Name:\"minecraft:cyan_wool\"}} " + particleAt + " 0 0 0 0 1 force");
+        server.runCommand(StereoTestCompat.particleCommand(particleAt));
         context.waitTicks(10);
         return StereoMetrics.measure(name, context.takeScreenshot(name));
     }
