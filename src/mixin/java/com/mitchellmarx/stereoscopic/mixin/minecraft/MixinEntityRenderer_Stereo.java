@@ -115,9 +115,8 @@ public abstract class MixinEntityRenderer_Stereo {
         final int eyeW = fullW / 2;
         final int eyeH = fullH;
 
-        // Swap-eyes flips which screen half each logical eye blits into. Paired with the
-        // negated IPD in StereoState.getEyeOffset so reversed-SBS displays / VR passthrough
-        // virtual monitors stay self-consistent.
+        // Swap-eyes flips which screen half each logical eye blits into (the eye offset itself
+        // is unchanged), for reversed-SBS displays / VR passthrough virtual monitors.
         final boolean swap = StereoConfig.stereoSwapEyes;
         final int leftX  = swap ? eyeW : 0;
         final int leftY  = 0;

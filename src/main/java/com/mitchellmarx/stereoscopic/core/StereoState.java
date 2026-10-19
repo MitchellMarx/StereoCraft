@@ -45,6 +45,11 @@ public class StereoState {
 
     public void exitGuiPass() { inGuiPass = false; }
     public boolean isInGuiPass() { return inGuiPass; }
+    /** Current eye viewport rect (valid while a GUI or world pass is active). */
+    public int eyeVpX() { return eyeVpX; }
+    public int eyeVpY() { return eyeVpY; }
+    public int eyeVpW() { return eyeVpW; }
+    public int eyeVpH() { return eyeVpH; }
 
     public void setInScratchGuiDraw(boolean v) { inScratchGuiDraw = v; }
     public boolean isInScratchGuiDraw() { return inScratchGuiDraw; }
@@ -116,9 +121,9 @@ public class StereoState {
     // the OPPOSITE camera position, which works for red/cyan anaglyph because the brain doesn't
     // see real per-eye images, but is backwards for SBS where each eye directly sees its half.
     //
-    // {@link StereoConfig#stereoSwapEyes} negates the result so reversed SBS displays / VR
-    // passthrough virtual monitors that interpret the halves with the opposite eye-assignment
-    // stay consistent with the swap-aware viewport (MixinEntityRenderer_Stereo).
+    // Deliberately NOT affected by {@link StereoConfig#stereoSwapEyes}: swap is purely "which
+    // half each eye lands in" (MixinEntityRenderer_Stereo et al.). Negating the offset here as
+    // well (as v0.1.2-v0.3.0 did) cancels the half swap, so the option did nothing visible.
     public float getEyeOffset() {
         if (!isActive()) return 0f;
         float ipd = StereoConfig.stereoIpd > 0f ? StereoConfig.stereoIpd : frameIpd;
@@ -129,7 +134,7 @@ public class StereoState {
             case RIGHT: base = -half; break;
             default:    return 0f;
         }
-        return StereoConfig.stereoSwapEyes ? -base : base;
+        return base;
     }
 
     /** Hand-specific offset, currently not applied (HandRenderer uses getEyeOffset instead for viewer comfort). */
