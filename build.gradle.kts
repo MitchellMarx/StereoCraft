@@ -67,6 +67,18 @@ neoForge {
 
 neoForge.addModdingDependenciesTo(selftest)
 
+dependencies {
+    // Self-test LOD pass: Distant Horizons terrain beyond vanilla render
+    // distance (-Pstereoscopic.noDh runs without).
+    "selftestCompileOnly"("maven.modrinth:distanthorizons:${project.property("dh_version")}")
+    if (!project.hasProperty("stereoscopic.noDh")) {
+        "selftestRuntimeOnly"("maven.modrinth:distanthorizons:${project.property("dh_version")}")
+    }
+    // No Voxy pass: Voxy on NeoForge is the Fabric jar through Sinytra
+    // Connector, which hooks FML's mod discovery as a boot-layer service; on
+    // the dev runtime classpath FML just skips the Fabric jar.
+}
+
 // The client's exit status is unreliable (forced exits can die with
 // 0xC0000409), so the self-test reports through a result file instead.
 tasks.matching { it.name == "runSelftest" }.configureEach {

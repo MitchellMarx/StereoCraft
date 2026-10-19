@@ -12,11 +12,11 @@ import java.util.Map;
  * scene marker per eye half; disparity is measured by cross-correlating the
  * marker's patch between the halves (sub-pixel), which is robust to shader
  * post-processing (bloom, grading) that shifts colour-blob centroids. Pure
- * Java (ImageIO) so it runs inside the self-test and can fail it.
+ * Java (ImageIO) so it runs inside the client gametest and can fail it.
  */
 final class StereoMetrics {
 
-    enum Marker { RED, BLUE, YELLOW, SHEEP }
+    enum Marker { RED, BLUE, YELLOW, SHEEP, PARTICLE }
 
     record Blob(double cx, int minX, int maxX, int minY, int maxY, int n) {
         int w() { return maxX - minX + 1; }
@@ -51,14 +51,19 @@ final class StereoMetrics {
 
     private static boolean matches(Marker m, int r, int g, int b) {
         return switch (m) {
-            case RED -> r > 110 && g < 60 && b < 60;
-            case BLUE -> b > 90 && r < 70 && g < 80;
+            // Ratio test: distant red wool under shader haze is ~(195,60,60).
+            case RED -> r > 100 && g < 0.45 * r && b < 0.45 * r;
+            // Ratio test: lit by shaders blue wool reaches ~(75,85,180); sky
+            // and the cyan particle have g close to b.
+            case BLUE -> b > 90 && r < 0.55 * b && g < 0.6 * b;
             // Ratio test: yellow wool is pale in vanilla, olive under 1.7.10
             // lighting (~130,120,25), warm under Complementary (~190,170,80);
             // grass has g > r, so it never matches.
             case YELLOW -> r > 100 && g > 0.75 * r && g <= r + 10 && b < 0.55 * r;
             // Magenta wool: ~(100,40,100) vanilla-lit, ~(130,60,130) shaded.
             case SHEEP -> r > 80 && b > 80 && g < 0.6 * Math.min(r, b) && Math.abs(r - b) < 40;
+            // Cyan wool (~21,137,145) block_marker particle; sky has b >> g.
+            case PARTICLE -> g > 70 && b > 70 && r < 0.5 * Math.min(g, b) && Math.abs(g - b) < 0.25 * Math.max(g, b);
         };
     }
 

@@ -5,7 +5,9 @@ import com.mitchellmarx.stereoscopic.selftest.StereoMetrics.Marker;
 import com.mitchellmarx.stereoscopic.selftest.StereoMetrics.Shot;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Stereo correctness checks over measured screenshots — same thresholds as the
@@ -37,7 +39,9 @@ final class StereoChecks {
             if (d == null || ds == null) continue;
             log("%s/%s %s: disp %+.2f vs swapped %+.2f", normal.name(), swapped.name(), m, d, ds);
             if (Math.abs(d) < 0.3) continue;
-            if (Math.abs(d + ds) > 0.6) {
+            // Two separate renders: allow each ~0.3 px of measurement noise,
+            // more on small far LOD targets (up to 25% of the disparity).
+            if (Math.abs(d + ds) > Math.max(0.6, 0.25 * Math.abs(d))) {
                 fail(String.format("%s: swapEyes does not mirror %s disparity (%+.2f vs %+.2f)", swapped.name(), m, d, ds));
             }
         }
@@ -56,8 +60,47 @@ final class StereoChecks {
         }
     }
 
+    /**
+     * Parallel disparity is f·IPD/depth for every point, whatever draws it, so
+     * K = -d·depth must agree across terrain, entity and particle markers.
+     * Catches a renderer applying a different eye separation (issue #5).
+     */
+    void depthScaling(Shot par, Map<Marker, Double> depth) {
+        Map<Marker, Double> k = new EnumMap<>(Marker.class);
+        for (Marker m : Marker.values()) {
+            Double d = disp(par, m);
+            if (d != null) k.put(m, -d * depth.get(m));
+        }
+        if (k.size() < Marker.values().length) return; // presence check reports it
+        double[] sorted = k.values().stream().mapToDouble(Double::doubleValue).sorted().toArray();
+        double median = sorted[sorted.length / 2];
+        StringBuilder sb = new StringBuilder();
+        k.forEach((m, v) -> sb.append(String.format(" %s=%.1f", m, v)));
+        log("%s: disparity x depth per marker:%s", par.name(), sb);
+        for (var e : k.entrySet()) {
+            double ratio = e.getValue() / median;
+            if (ratio < 0.7 || ratio > 1.4) {
+                fail(String.format("%s: %s eye separation %.2fx the scene's (disparity x depth%s)", par.name(), e.getKey(), ratio, sb));
+            }
+        }
+    }
+
+    /** No LOD-scene pillar may be visible when the LOD renderer is off (proves the pass measures it). */
+    void lodControl(Shot off, String mod) {
+        for (Marker m : new Marker[] {Marker.RED, Marker.BLUE, Marker.YELLOW}) {
+            if (off.whole().get(m) != null) fail(off.name() + ": " + m + " visible with " + mod + " rendering off — the pass would not measure " + mod);
+        }
+        for (Marker m : new Marker[] {Marker.SHEEP, Marker.PARTICLE}) {
+            if (off.whole().get(m) == null) fail(off.name() + ": vanilla " + m + " missing");
+        }
+    }
+
     /** d_conv = k * d_parallel + C with the same C for terrain and entities. */
     void convergenceConsistent(Shot conv, Shot par) {
+        convergenceConsistent(conv, par, parallelIpd);
+    }
+
+    void convergenceConsistent(Shot conv, Shot par, float parallelIpd) {
         double k = ipd / parallelIpd;
         double min = Double.MAX_VALUE, max = -Double.MAX_VALUE;
         StringBuilder sb = new StringBuilder();
@@ -113,7 +156,7 @@ final class StereoChecks {
         return StereoMetrics.disparity(s, m);
     }
 
-    private void fail(String msg) {
+    void fail(String msg) {
         failures.add(msg);
         Stereoscopic.LOG.error("[stereo-test] FAIL {}", msg);
     }
