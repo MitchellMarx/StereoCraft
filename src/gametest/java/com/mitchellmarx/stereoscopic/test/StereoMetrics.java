@@ -62,8 +62,9 @@ final class StereoMetrics {
             case YELLOW -> r > 100 && g > 0.75 * r && g <= r + 10 && b < 0.55 * r;
             // Magenta wool: ~(100,40,100) vanilla-lit, ~(130,60,130) shaded.
             case SHEEP -> r > 80 && b > 80 && g < 0.6 * Math.min(r, b) && Math.abs(r - b) < 40;
-            // Cyan wool (~21,137,145) block_marker particle; sky has b >> g.
-            case PARTICLE -> g > 70 && b > 70 && r < 0.5 * Math.min(g, b) && Math.abs(g - b) < 0.25 * Math.max(g, b);
+            // Cyan wool particle: ~(21,137,145) vanilla, ~(93,178,195) under
+            // Complementary on 1.7.10; sky has b >> g, haze r close to g.
+            case PARTICLE -> g > 70 && b > 70 && r < 0.6 * Math.min(g, b) && Math.abs(g - b) < 0.25 * Math.max(g, b);
         };
     }
 
