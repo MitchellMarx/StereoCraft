@@ -54,6 +54,16 @@ fabricApi {
         eula = true
     }
 }
+tasks.matching { it.name == "runClientGameTest" }.configureEach {
+    // Shader pass of the stereo gametest (skipped if the pack is absent).
+    (this as JavaExec).systemProperty("stereoscopic.test.shaderpack",
+        (project.findProperty("stereoscopic.testShaderpack") as String?)
+            ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.1.2/shaderpacks/ComplementaryReimagined_r5.9.3.zip")
+    (project.findProperty("stereoscopic.testBisect") as String?)?.let { systemProperty("stereoscopic.test.bisect", it) }
+    // StereoMixinAudit reads the transformed classes to prove every injector injected.
+    systemProperty("mixin.debug.export", "true")
+    if (project.hasProperty("stereoscopic.probeTaa")) systemProperty("stereoscopic.test.probeTaa", "true")
+}
 
 loom {
     mods {
