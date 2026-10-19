@@ -35,16 +35,46 @@ final class StereoTestCompat {
         return mc.options.renderDistance().get();
     }
 
+    private static int screenshotCounter;
+
+    /**
+     * Grabs the last finished frame from the main render target. Not
+     * ClientGameTestContext.takeScreenshot: that renders an extra frame
+     * within the tick, which on 26.1.2 skips Sodium 0.9's per-frame terrain
+     * setup and crashes it ("Global terrain uniforms have not been updated",
+     * with or without this mod's mixins).
+     */
+    static Path screenshot(ClientGameTestContext context, String name) {
+        context.waitTick();
+        java.util.concurrent.atomic.AtomicReference<Path> done = new java.util.concurrent.atomic.AtomicReference<>();
+        Path png = context.computeOnClient(mc -> {
+            Path dir = mc.gameDirectory.toPath().resolve("screenshots");
+            Path file = dir.resolve(String.format("%04d_%s.png", screenshotCounter++, name));
+            net.minecraft.client.Screenshot.takeScreenshot(mc.getMainRenderTarget(), img -> {
+                try (img) {
+                    java.nio.file.Files.createDirectories(dir);
+                    img.writeToFile(file);
+                    done.set(file);
+                } catch (java.io.IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
+            return file;
+        });
+        context.waitFor(mc -> done.get() != null);
+        return png;
+    }
+
     /** Setting the option alone doesn't reload Sodium's renderer; allChanged() does. */
     static void setRenderDistance(Minecraft mc, int chunks) {
         mc.options.renderDistance().set(chunks);
         mc.levelRenderer.allChanged();
     }
 
-    /** What Voxy's own "rendering" option does on change (Voxy 0.2.16 API). */
+    /** What Voxy's own "rendering" option does on change (Voxy 0.2.18 API). */
     static void setVoxyRendering(Minecraft mc, boolean on) {
         me.cortex.voxy.client.config.VoxyConfig.CONFIG.enableRendering = on;
-        me.cortex.voxy.client.core.IGetVoxyRenderSystem rs = (me.cortex.voxy.client.core.IGetVoxyRenderSystem) mc.levelRenderer;
+        me.cortex.voxy.client.core.IVoxyRenderSystemHolder rs = (me.cortex.voxy.client.core.IVoxyRenderSystemHolder) mc.levelRenderer;
         boolean running = rs.voxy$getRenderSystem() != null;
         if (on && !running) rs.voxy$createRenderer();
         else if (!on && running) rs.voxy$shutdownRenderer();

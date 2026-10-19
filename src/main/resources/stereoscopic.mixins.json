@@ -21,6 +21,7 @@
     "minecraft.CameraAccessor",
     "minecraft.MixinMinecraftClient",
     "sodium.MixinSodiumWorldRenderer",
+    "sodium.MixinUniformBufferManager",
     "sodium.MixinViewport"
   ],
   "mixins": [],
