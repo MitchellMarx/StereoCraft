@@ -16,8 +16,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * redirect. The popup's own setup resets the GL viewport to the full display each call
  * (see {@code GuiAchievement.func_146258_c}), so left alone it draws once at the top-right
  * of the full window and only one eye sees it. Redirect the call and post it per eye, with
- * {@code StereoState.enterGuiPass} active so {@code GLStateManager} can route the inner
- * full-FB viewport reset to the current eye's region.
+ * {@code StereoState.enterGuiPass} active so {@link MixinGuiAchievement_Stereo} re-applies the
+ * current eye's viewport after that inner full-display reset.
  */
 @Mixin(value = Minecraft.class, priority = 1100)
 public class MixinMinecraft_StereoAchievement {

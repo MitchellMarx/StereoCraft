@@ -25,6 +25,7 @@
     "minecraft.MixinFMLCommonHandler_Stereo",
     "minecraft.MixinFramebuffer_AsyncCursor",
     "minecraft.MixinFramebuffer_Stereo",
+    "minecraft.MixinGuiAchievement_Stereo",
     "minecraft.MixinMinecraft_AsyncCursor",
     "minecraft.MixinMinecraft_StereoAchievement",
     "minecraft.MixinMinecraft_StereoScratchFb",
