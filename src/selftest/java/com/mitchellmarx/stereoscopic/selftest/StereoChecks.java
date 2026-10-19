@@ -98,13 +98,26 @@ final class StereoChecks {
         }
     }
 
+    /** At ~zero IPD both eyes must render the same image (whole frame + per marker). */
+    void eyesIdentical(Shot s) {
+        double whole = StereoMetrics.asymmetry(s);
+        log("%s: eye asymmetry %.3f%% of pixels", s.name(), whole * 100);
+        if (whole > 0.005) fail(String.format("%s: eyes differ at zero IPD (%.2f%% of pixels) — one-eye artifact", s.name(), whole * 100));
+        for (Marker m : Marker.values()) {
+            double a = StereoMetrics.regionAsymmetry(s, m);
+            if (Double.isNaN(a)) { fail(s.name() + ": " + m + " missing"); continue; }
+            log("%s: %s region asymmetry %.2f%%", s.name(), m, a * 100);
+            if (a > 0.03) fail(String.format("%s: %s renders differently per eye at zero IPD (%.1f%% of its pixels) — one-eye artifact", s.name(), m, a * 100));
+        }
+    }
+
     /** HUD-style overlays (achievement popup) must appear in each eye half. */
     void popupInBothHalves(Shot s) {
         if (s == null) { fail("popup: no screenshot"); return; }
-        log("%s: popup dark px top-right LEFT=%d RIGHT=%d", s.name(), s.darkTopRightLeft(), s.darkTopRightRight());
-        if (s.darkTopRightLeft() < 200 || s.darkTopRightRight() < 200) {
-            fail(String.format("%s: achievement popup not drawn in both eye halves (dark px LEFT=%d RIGHT=%d)",
-                s.name(), s.darkTopRightLeft(), s.darkTopRightRight()));
+        int l = StereoMetrics.darkTopRight(s, false), r = StereoMetrics.darkTopRight(s, true);
+        log("%s: popup dark px top-right LEFT=%d RIGHT=%d", s.name(), l, r);
+        if (l < 200 || r < 200) {
+            fail(String.format("%s: achievement popup not drawn in both eye halves (dark px LEFT=%d RIGHT=%d)", s.name(), l, r));
         }
     }
 

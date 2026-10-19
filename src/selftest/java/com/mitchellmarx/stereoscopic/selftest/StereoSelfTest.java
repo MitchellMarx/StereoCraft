@@ -63,6 +63,7 @@ public final class StereoSelfTest {
         new Step("half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false, false),
         new Step("half_parallel_swap", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, true, false),
         new Step("full_conv4", StereoMode.SBS_FULL, IPD, CONV, false, false),
+        new Step("half_ipd0", StereoMode.SBS_HALF, 0.0005f, 0f, false, false),
         new Step("half_conv4_after_resize", StereoMode.SBS_HALF, IPD, CONV, false, true),
     };
 
@@ -208,6 +209,7 @@ public final class StereoSelfTest {
         c.parallel(shots.get("half_parallel"));
         c.convergenceConsistent(shots.get("half_conv4"), shots.get("half_parallel"));
         c.aspect(shots.get("mono"), shots.get("half_conv4"), shots.get("full_conv4"));
+        c.eyesIdentical(shots.get("half_ipd0"));
         c.popupInBothHalves(popupShot);
         finish(mc, c.failures.isEmpty() ? null : String.join("\n  ", c.failures));
     }
