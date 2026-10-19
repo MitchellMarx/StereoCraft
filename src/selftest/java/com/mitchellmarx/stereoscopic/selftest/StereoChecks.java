@@ -95,6 +95,19 @@ final class StereoChecks {
         }
     }
 
+    /** At ~zero IPD both eyes must render the same image (whole frame + per marker). */
+    void eyesIdentical(Shot s) {
+        double whole = StereoMetrics.asymmetry(s);
+        log("%s: eye asymmetry %.3f%% of pixels", s.name(), whole * 100);
+        if (whole > 0.005) fail(String.format("%s: eyes differ at zero IPD (%.2f%% of pixels) — one-eye artifact", s.name(), whole * 100));
+        for (Marker m : Marker.values()) {
+            double a = StereoMetrics.regionAsymmetry(s, m);
+            if (Double.isNaN(a)) { fail(s.name() + ": " + m + " missing"); continue; }
+            log("%s: %s region asymmetry %.2f%%", s.name(), m, a * 100);
+            if (a > 0.03) fail(String.format("%s: %s renders differently per eye at zero IPD (%.1f%% of its pixels) — one-eye artifact", s.name(), m, a * 100));
+        }
+    }
+
     private static Double disp(Shot s, Marker m) {
         if (s.left().get(m) == null || s.right().get(m) == null) return null;
         return StereoMetrics.disparity(s, m);

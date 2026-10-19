@@ -49,6 +49,10 @@ neoForge {
             gameDirectory = file("run-selftest")
             programArguments.addAll("--username", "Dev")
             systemProperty("stereoscopic.selftest", "true")
+            // Shader pass of the self-test (skipped if the pack is absent).
+            systemProperty("stereoscopic.test.shaderpack",
+                (project.findProperty("stereoscopic.testShaderpack") as String?)
+                    ?: "C:/Users/felix/AppData/Roaming/ModrinthApp/profiles/Fabric 26.1.2/shaderpacks/ComplementaryReimagined_r5.9.3.zip")
             sourceSet = selftest
         }
     }

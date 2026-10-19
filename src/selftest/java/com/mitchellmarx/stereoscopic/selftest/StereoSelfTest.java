@@ -46,17 +46,37 @@ public final class StereoSelfTest {
     private static final float CONV = 4f;
     private static final float PARALLEL_IPD = 0.1f;
 
-    private record Step(String name, StereoMode mode, float ipd, float conv, boolean swap, boolean resize) {}
+    /** shader: +1 = enable the test shader pack before this step, 0 = unchanged. */
+    private record Step(String name, StereoMode mode, float ipd, float conv, boolean swap, boolean resize, int shader) {
+        Step(String name, StereoMode mode, float ipd, float conv, boolean swap, boolean resize) {
+            this(name, mode, ipd, conv, swap, resize, 0);
+        }
+    }
 
-    private static final Step[] STEPS = {
-        new Step("mono", StereoMode.OFF, IPD, CONV, false, false),
-        new Step("half_conv4", StereoMode.SBS_HALF, IPD, CONV, false, false),
-        new Step("half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true, false),
-        new Step("half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false, false),
-        new Step("half_parallel_swap", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, true, false),
-        new Step("full_conv4", StereoMode.SBS_FULL, IPD, CONV, false, false),
-        new Step("half_conv4_after_resize", StereoMode.SBS_HALF, IPD, CONV, false, true),
-    };
+    private static final float ZERO_IPD = 0.0005f;
+    /** -Dstereoscopic.test.shaderpack: Iris shader pass (skipped if absent). */
+    private static final String SHADER_PACK = System.getProperty("stereoscopic.test.shaderpack");
+    private static final boolean SHADERS = SHADER_PACK != null && Files.isRegularFile(Path.of(SHADER_PACK));
+
+    private static final Step[] STEPS = steps();
+
+    private static Step[] steps() {
+        java.util.List<Step> l = new java.util.ArrayList<>(java.util.List.of(
+            new Step("mono", StereoMode.OFF, IPD, CONV, false, false),
+            new Step("half_conv4", StereoMode.SBS_HALF, IPD, CONV, false, false),
+            new Step("half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true, false),
+            new Step("half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false, false),
+            new Step("half_parallel_swap", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, true, false),
+            new Step("full_conv4", StereoMode.SBS_FULL, IPD, CONV, false, false),
+            new Step("half_ipd0", StereoMode.SBS_HALF, ZERO_IPD, 0f, false, false),
+            new Step("half_conv4_after_resize", StereoMode.SBS_HALF, IPD, CONV, false, true)));
+        if (SHADERS) {
+            l.add(new Step("shaders_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false, false, +1));
+            l.add(new Step("shaders_half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false, false));
+            l.add(new Step("shaders_half_ipd0", StereoMode.SBS_HALF, ZERO_IPD, 0f, false, false));
+        }
+        return l.toArray(new Step[0]);
+    }
 
     private enum Phase { BOOT, CREATING, SCENE, SETTLE, STEP, EXITING, DONE }
 
@@ -139,7 +159,11 @@ public final class StereoSelfTest {
                         return;
                     }
                     apply(mc, STEPS[step]);
-                    wait = STEPS[step].resize() ? 30 : 10;
+                    // The first stereo frame triggers a one-time Iris rebuild +
+                    // chunk reload (ensureIrisRebuiltForStereo) a frame later;
+                    // hasRenderedAllSections can still read true before it starts.
+                    boolean firstStereo = step == 1;
+                    wait = STEPS[step].shader() != 0 ? 120 : firstStereo ? 60 : STEPS[step].resize() ? 30 : 10;
                 }
                 default -> { }
             }
@@ -157,6 +181,28 @@ public final class StereoSelfTest {
         o.swapEyes = s.swap();
         if (s.resize()) {
             GLFW.glfwSetWindowSize(mc.getWindow().getWindow(), 1000, 560);
+        }
+        if (s.shader() > 0) setShaders(mc, true);
+    }
+
+    private static void setShaders(Minecraft mc, boolean on) {
+        try {
+            net.irisshaders.iris.config.IrisConfig cfg = net.irisshaders.iris.Iris.getIrisConfig();
+            if (on) {
+                Path src = Path.of(SHADER_PACK);
+                Path dir = mc.gameDirectory.toPath().resolve("shaderpacks");
+                Files.createDirectories(dir);
+                Files.copy(src, dir.resolve(src.getFileName().toString()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                // Force TAA on: the pack's default (-1) depends on the detail profile.
+                Files.writeString(dir.resolve(src.getFileName() + ".txt"), System.getProperty("stereoscopic.test.shaderOptions", "TAA_DEFINE=1\n"));
+                cfg.setShaderPackName(src.getFileName().toString());
+            }
+            cfg.setShadersEnabled(on);
+            cfg.save();
+            net.irisshaders.iris.Iris.reload();
+            StereoChecks.log("shaders %s: %s", on ? "ON" : "OFF", SHADER_PACK);
+        } catch (Exception e) {
+            throw new RuntimeException("could not toggle shaders", e);
         }
     }
 
@@ -179,6 +225,16 @@ public final class StereoSelfTest {
         c.parallel(shots.get("half_parallel"));
         c.convergenceConsistent(shots.get("half_conv4"), shots.get("half_parallel"));
         c.aspect(shots.get("mono"), shots.get("half_conv4"), shots.get("full_conv4"));
+        c.eyesIdentical(shots.get("half_ipd0"));
+        if (SHADERS) {
+            setShaders(mc, false);
+            c.presence(shots.get("shaders_half_conv4"), shots.get("shaders_half_parallel"));
+            c.parallel(shots.get("shaders_half_parallel"));
+            c.convergenceConsistent(shots.get("shaders_half_conv4"), shots.get("shaders_half_parallel"));
+            c.eyesIdentical(shots.get("shaders_half_ipd0"));
+        } else {
+            StereoChecks.log("shaders: SKIPPED (no -Dstereoscopic.test.shaderpack)");
+        }
         finish(mc, c.failures.isEmpty() ? null : String.join("\n  ", c.failures));
     }
 
