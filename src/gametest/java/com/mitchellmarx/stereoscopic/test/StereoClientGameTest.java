@@ -652,6 +652,6 @@ public class StereoClientGameTest implements FabricClientGameTest {
     private Shot capture(ClientGameTestContext context, String name) {
         server.runCommand(StereoTestCompat.particleCommand(particleAt));
         context.waitTicks(10);
-        return StereoMetrics.measure(name, context.takeScreenshot(name));
+        return StereoMetrics.measure(name, StereoTestCompat.screenshot(context, name));
     }
 }
