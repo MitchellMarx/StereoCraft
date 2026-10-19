@@ -165,6 +165,16 @@ public class StereoClientGameTest implements FabricClientGameTest {
     /** Vanilla scene (Sodium terrain, entity, particle) in every mode, plus a mid-stereo resize. */
     private void nearPass(ClientGameTestContext context) {
         Shot mono = shot(context, "mono", StereoMode.OFF, IPD, CONV, false);
+        // The vanilla world must come back after every activation (set()
+        // waits up to ~12 s for it): with DH loaded the chunk rebuild after a
+        // mode change was seen to outlast the chunk wait.
+        for (int i = 0; i < 5; i++) {
+            Shot s = shot(context, "activation_" + i, StereoMode.SBS_HALF, IPD, CONV, false);
+            for (Marker m : List.of(Marker.RED, Marker.SHEEP)) {
+                if (s.left().get(m) == null || s.right().get(m) == null) fail("activation " + i + ": vanilla " + m + " missing right after enabling stereo");
+            }
+            set(context, StereoMode.OFF, IPD, CONV, false);
+        }
         Shot half = shot(context, "half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
         Shot halfSwap = shot(context, "half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true);
         Shot par = shot(context, "half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false);
@@ -292,6 +302,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
         }
         lodRendering(context, mod, true);
         context.waitTicks(100); // LOD reload after re-enabling
+        awaitLodSettled(context, mod);
         log("%s: LOD scene", mod);
 
         Shot half = shot(context, mod + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
@@ -317,6 +328,52 @@ public class StereoClientGameTest implements FabricClientGameTest {
         server.runCommand("tp @p 0.5 -60 0.5 0 10");
         StereoTestCompat.waitForChunksRender(sp);
         context.waitTicks(20);
+    }
+
+    /**
+     * A mode change rebuilds the Iris pipeline and reloads every chunk; with DH
+     * generating in the background the rebuild can outlast the chunk-render
+     * wait (which may report done before sections are rebuilt), leaving
+     * terrain and entities briefly undrawn. Wait (up to ~12 s) until the
+     * vanilla sheep — present in both scenes — is drawn again; logged when it
+     * took longer than the chunk wait. If it never returns, the shot's
+     * presence check fails.
+     */
+    private void awaitVanilla(ClientGameTestContext context, StereoMode mode) {
+        for (int i = 0; i < 12; i++) {
+            Shot s = capture(context, "await_vanilla");
+            boolean drawn = mode == StereoMode.OFF ? s.whole().get(Marker.SHEEP) != null
+                : s.left().get(Marker.SHEEP) != null && s.right().get(Marker.SHEEP) != null;
+            if (drawn) {
+                if (i > 0) log("vanilla world drawn again ~%d ticks after the chunk wait (mode %s)", i * 20, mode);
+                return;
+            }
+            context.waitTicks(10);
+        }
+        log("vanilla world still not drawn ~12 s after switching to %s", mode);
+    }
+
+    /**
+     * LOD mods keep refining detail after (re)loading; a pillar whose LOD
+     * changes between the shots of one check reads as a disparity error. Wait
+     * (mono, up to ~16 s) until every LOD pillar's bounding box is identical
+     * in two consecutive shots.
+     */
+    private void awaitLodSettled(ClientGameTestContext context, String mod) {
+        set(context, StereoMode.OFF, IPD, CONV, false);
+        String prev = null;
+        for (int i = 0; i < 8; i++) {
+            Shot s = capture(context, mod + "_settle");
+            StringBuilder sb = new StringBuilder();
+            for (Marker m : TERRAIN) {
+                StereoMetrics.Blob b = s.whole().get(m);
+                sb.append(b == null ? "-" : b.minX() + "," + b.maxX() + "," + b.minY() + "," + b.maxY()).append(';');
+            }
+            if (sb.toString().equals(prev)) return;
+            prev = sb.toString();
+            context.waitTicks(40);
+        }
+        log("%s: LOD terrain still changing after the settle wait", mod);
     }
 
     /** Like the video settings screen: Sodium only re-reads it on a renderer reload. */
@@ -439,7 +496,10 @@ public class StereoClientGameTest implements FabricClientGameTest {
             if (d == null || ds == null) continue;
             log("%s/%s %s: disp %+.2f vs swapped %+.2f", normal.name(), swapped.name(), m, d, ds);
             if (Math.abs(d) < 0.3) continue; // too small to tell a mirror from noise
-            if (Math.abs(d + ds) > 0.6) {
+            // Two separate renders: allow each ~0.3 px of measurement noise,
+            // more on small far LOD targets (up to 25% of the disparity). A
+            // no-op swap is off by 2|d|, a wrong sign by far more.
+            if (Math.abs(d + ds) > Math.max(0.6, 0.25 * Math.abs(d))) {
                 fail(String.format("%s: swapEyes does not mirror %s disparity (%+.2f vs %+.2f)", swapped.name(), m, d, ds));
             }
         }
@@ -566,6 +626,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
         if (changed) {
             context.waitTicks(60);
             StereoTestCompat.waitForChunksRender(sp); // the rebuild reloads chunks
+            awaitVanilla(context, mode);
         }
     }
 
