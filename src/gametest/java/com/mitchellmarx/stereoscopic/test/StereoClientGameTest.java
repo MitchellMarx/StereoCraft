@@ -165,6 +165,16 @@ public class StereoClientGameTest implements FabricClientGameTest {
     /** Vanilla scene (Sodium terrain, entity, particle) in every mode, plus a mid-stereo resize. */
     private void nearPass(ClientGameTestContext context) {
         Shot mono = shot(context, "mono", StereoMode.OFF, IPD, CONV, false);
+        // The vanilla world must come back after every activation (set()
+        // waits up to ~12 s for it): with DH loaded the chunk rebuild after a
+        // mode change was seen to outlast the chunk wait.
+        for (int i = 0; i < 5; i++) {
+            Shot s = shot(context, "activation_" + i, StereoMode.SBS_HALF, IPD, CONV, false);
+            for (Marker m : List.of(Marker.RED, Marker.SHEEP)) {
+                if (s.left().get(m) == null || s.right().get(m) == null) fail("activation " + i + ": vanilla " + m + " missing right after enabling stereo");
+            }
+            set(context, StereoMode.OFF, IPD, CONV, false);
+        }
         Shot half = shot(context, "half_conv4", StereoMode.SBS_HALF, IPD, CONV, false);
         Shot halfSwap = shot(context, "half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true);
         Shot par = shot(context, "half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false);
@@ -318,6 +328,29 @@ public class StereoClientGameTest implements FabricClientGameTest {
         server.runCommand("tp @p 0.5 -60 0.5 0 10");
         StereoTestCompat.waitForChunksRender(sp);
         context.waitTicks(20);
+    }
+
+    /**
+     * A mode change rebuilds the Iris pipeline and reloads every chunk; with DH
+     * generating in the background the rebuild can outlast the chunk-render
+     * wait (which may report done before sections are rebuilt), leaving
+     * terrain and entities briefly undrawn. Wait (up to ~12 s) until the
+     * vanilla sheep — present in both scenes — is drawn again; logged when it
+     * took longer than the chunk wait. If it never returns, the shot's
+     * presence check fails.
+     */
+    private void awaitVanilla(ClientGameTestContext context, StereoMode mode) {
+        for (int i = 0; i < 12; i++) {
+            Shot s = capture(context, "await_vanilla");
+            boolean drawn = mode == StereoMode.OFF ? s.whole().get(Marker.SHEEP) != null
+                : s.left().get(Marker.SHEEP) != null && s.right().get(Marker.SHEEP) != null;
+            if (drawn) {
+                if (i > 0) log("vanilla world drawn again ~%d ticks after the chunk wait (mode %s)", i * 20, mode);
+                return;
+            }
+            context.waitTicks(10);
+        }
+        log("vanilla world still not drawn ~12 s after switching to %s", mode);
     }
 
     /**
@@ -593,6 +626,7 @@ public class StereoClientGameTest implements FabricClientGameTest {
         if (changed) {
             context.waitTicks(60);
             StereoTestCompat.waitForChunksRender(sp); // the rebuild reloads chunks
+            awaitVanilla(context, mode);
         }
     }
 
