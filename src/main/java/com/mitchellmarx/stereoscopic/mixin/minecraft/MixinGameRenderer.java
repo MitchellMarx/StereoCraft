@@ -148,6 +148,7 @@ public abstract class MixinGameRenderer {
                 float dx = StereoState.INSTANCE.getEyeOffset();
                 Vector3fc left = camera.leftVector();
                 crs.pos = basePos.add(-left.x() * dx, -left.y() * dx, -left.z() * dx);
+                StereoState.INSTANCE.setEyeCameraOffset(crs.pos.subtract(basePos));
                 // Off-axis convergence shear on a fresh copy of the mono
                 // projection (applyConvergenceShear mutates in place).
                 // SBS_FULL first halves the aspect to (W/2)/H — order matters,
@@ -171,6 +172,7 @@ public abstract class MixinGameRenderer {
             crs.pos = basePos;
             crs.projectionMatrix = baseProj;
             StereoState.INSTANCE.setFrameMonoCameraPos(null);
+            StereoState.INSTANCE.setEyeCameraOffset(Vec3.ZERO);
         }
     }
 

@@ -1,0 +1,12 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.mitchellmarx.stereoscopic.mixin.dh",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "MixinDhMinecraftRenderWrapper",
+    "MixinDhVanillaFadeRenderer"
+  ],
+  "mixins": [],
+  "injectors": { "defaultRequire": 0 }
+}

@@ -34,6 +34,7 @@ dependencies {
     runtimeOnly("maven.modrinth:iris:${project.property("iris_version")}")
 
     compileOnly("maven.modrinth:voxy:${project.property("voxy_version")}")
+    compileOnly("maven.modrinth:distanthorizons:${project.property("dh_version")}")
 
     // MixinExtras is bundled inside Fabric Loader 0.19 at runtime; compileOnly
     // for the annotations (@WrapOperation, @ModifyReturnValue, ...).
@@ -54,6 +55,14 @@ fabricApi {
         eula = true
     }
 }
+dependencies {
+    // Gametest's LOD pass (Distant Horizons terrain beyond vanilla render
+    // distance); -Pstereoscopic.noDh runs without. No Voxy build exists for 26.3.
+    "gametestCompileOnly"("maven.modrinth:distanthorizons:${project.property("dh_version")}")
+    if (!project.hasProperty("stereoscopic.noDh")) {
+        "gametestRuntimeOnly"("maven.modrinth:distanthorizons:${project.property("dh_version")}")
+    }
+}
 tasks.matching { it.name == "runClientGameTest" }.configureEach {
     // Shader pass of the stereo gametest (skipped if the pack is absent).
     (this as JavaExec).systemProperty("stereoscopic.test.shaderpack",
@@ -62,7 +71,28 @@ tasks.matching { it.name == "runClientGameTest" }.configureEach {
     (project.findProperty("stereoscopic.testBisect") as String?)?.let { systemProperty("stereoscopic.test.bisect", it) }
     // StereoMixinAudit reads the transformed classes to prove every injector injected.
     systemProperty("mixin.debug.export", "true")
+    // A loader error (e.g. incompatible test mods) exits instead of waiting on an error window.
+    systemProperty("fabric.noGui", "true")
+    // Verdict comes from the test's result file, not the exit status (the
+    // test halts the JVM when DH is loaded; a forced halt exits 0xC0000409).
+    val result = file("build/run/clientGameTest/stereo-test-result.txt")
+    isIgnoreExitValue = true
+    doFirst { result.delete() }
+    doLast {
+        val text = if (result.isFile) result.readText() else "no result file (client crashed before finishing)"
+        if (!text.startsWith("PASS")) throw GradleException("Stereo test failed:\n$text")
+        logger.lifecycle("Stereo test: PASS")
+    }
     if (project.hasProperty("stereoscopic.probeTaa")) systemProperty("stereoscopic.test.probeTaa", "true")
+    if (project.hasProperty("stereoscopic.lodOnly")) systemProperty("stereoscopic.test.lodOnly", "true")
+    systemProperty("stereoscopic.test.knownBroken", (project.findProperty("test_known_broken") as String?) ?: "")
+}
+// Full stereo suite: `./gradlew stereoTest` — vanilla, shaders, Distant
+// Horizons (one client; no Voxy build exists for 26.3).
+tasks.register("stereoTest") {
+    group = "verification"
+    description = "Stereo gametest: vanilla, shaders, Distant Horizons"
+    dependsOn("runClientGameTest")
 }
 
 loom {
