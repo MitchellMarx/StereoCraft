@@ -336,21 +336,31 @@ public class StereoClientGameTest implements FabricClientGameTest {
      * wait (which may report done before sections are rebuilt), leaving
      * terrain and entities briefly undrawn. Wait (up to ~12 s) until the
      * vanilla sheep — present in both scenes — is drawn again; logged when it
-     * took longer than the chunk wait. If it never returns, the shot's
-     * presence check fails.
+     * took longer than the chunk wait, a failure when it never did.
      */
     private void awaitVanilla(ClientGameTestContext context, StereoMode mode) {
         for (int i = 0; i < 12; i++) {
-            Shot s = capture(context, "await_vanilla");
-            boolean drawn = mode == StereoMode.OFF ? s.whole().get(Marker.SHEEP) != null
-                : s.left().get(Marker.SHEEP) != null && s.right().get(Marker.SHEEP) != null;
-            if (drawn) {
+            if (vanillaDrawn(context, mode)) {
                 if (i > 0) log("vanilla world drawn again ~%d ticks after the chunk wait (mode %s)", i * 20, mode);
                 return;
             }
             context.waitTicks(10);
         }
-        log("vanilla world still not drawn ~12 s after switching to %s", mode);
+        // Still missing: record it, then see whether a tiny camera turn (a
+        // player moving the mouse) brings it back, so the later shots stay valid.
+        server.runCommand("tp @p ~ ~ ~ ~0.5 ~");
+        context.waitTicks(10);
+        server.runCommand("tp @p ~ ~ ~ ~-0.5 ~");
+        context.waitTicks(20);
+        boolean back = vanillaDrawn(context, mode);
+        fail(String.format("vanilla world (terrain + entities) not drawn ~12 s after switching to %s; %s",
+            mode, back ? "a 0.5 deg camera turn brought it back" : "still missing after a camera turn"));
+    }
+
+    private boolean vanillaDrawn(ClientGameTestContext context, StereoMode mode) {
+        Shot s = capture(context, "await_vanilla");
+        return mode == StereoMode.OFF ? s.whole().get(Marker.SHEEP) != null
+            : s.left().get(Marker.SHEEP) != null && s.right().get(Marker.SHEEP) != null;
     }
 
     /**

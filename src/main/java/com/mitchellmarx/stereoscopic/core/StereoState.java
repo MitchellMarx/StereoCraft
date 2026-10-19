@@ -39,12 +39,24 @@ public final class StereoState {
      */
     private Vec3 eyeCameraOffset = Vec3.ZERO;
 
+    /** Frames left in which to re-run terrain visibility after a mode change. */
+    private static final int TERRAIN_REFRESH_FRAMES = 120;
+    private int terrainRefreshFrames;
+
     private StereoState() {}
+
+    /** True (and counts down) while terrain visibility should be refreshed after a mode change. */
+    public boolean consumeTerrainRefreshFrame() {
+        if (terrainRefreshFrames <= 0) return false;
+        terrainRefreshFrames--;
+        return true;
+    }
 
     /** From MixinGameRenderer's HEAD inject on render(). Snapshots options
      *  into frame-local fields so mid-frame config flips can't desync state. */
     public void beginFrame(int fbW, int fbH) {
         StereoOptions o = StereoOptions.INSTANCE;
+        if (o.mode != this.frameMode) terrainRefreshFrames = TERRAIN_REFRESH_FRAMES;
         this.frameMode = o.mode;
         this.frameIpd = o.ipd;
         this.frameConvergence = o.convergence;

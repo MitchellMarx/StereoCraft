@@ -13,6 +13,7 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.textures.GpuTexture;
+import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -26,6 +27,7 @@ import org.lwjgl.opengl.GL30;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -67,6 +69,23 @@ public abstract class MixinGameRenderer {
         StereoState.INSTANCE.beginFrame(w.getWidth(), w.getHeight());
         StereoCursor.tick();
         stereoscopic$ensureIrisRebuiltForStereo();
+        stereoscopic$refreshTerrainAfterModeChange();
+    }
+
+    /**
+     * After a stereo mode change (pipeline rebuild + chunk reload), Sodium's
+     * section visibility could stay empty for as long as the camera did not
+     * move — terrain and entities undrawn, DH LODs and particles still there;
+     * any camera turn restored it. Measured with DH loaded (heavier chunk
+     * rebuilds): up to 3 of 7 mode changes per run, none for 16 mono pipeline
+     * reloads. Re-run the visibility search for a while after each change,
+     * as a camera movement would.
+     */
+    @Unique
+    private void stereoscopic$refreshTerrainAfterModeChange() {
+        if (!StereoState.INSTANCE.consumeTerrainRefreshFrame()) return;
+        SodiumWorldRenderer sodium = SodiumWorldRenderer.instanceNullable();
+        if (sodium != null) sodium.scheduleTerrainUpdate();
     }
 
     /**
