@@ -26,6 +26,7 @@ import org.lwjgl.opengl.DisplayMode;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -49,23 +50,53 @@ public final class StereoSelfTest {
     /** Superflat 1.7.10: bedrock y0, dirt y1-2, grass y3 — feet at y4. */
     private static final int Y = 4;
 
+    /** -Dstereoscopic.test.shaderpack: shader passes (skipped if absent). */
+    private static final String SHADER_PACK = System.getProperty("stereoscopic.test.shaderpack");
+    private static final boolean SHADERS = SHADER_PACK != null && new File(SHADER_PACK).isFile();
+
+    /** Forward distance (blocks) from the eye to each marker's visible face. */
+    private static final Map<StereoMetrics.Marker, Double> DEPTH = new EnumMap<>(StereoMetrics.Marker.class);
+    static {
+        DEPTH.put(StereoMetrics.Marker.RED, 5.5);
+        DEPTH.put(StereoMetrics.Marker.BLUE, 11.5);
+        DEPTH.put(StereoMetrics.Marker.YELLOW, 29.5);
+        DEPTH.put(StereoMetrics.Marker.SHEEP, 7.6);
+        DEPTH.put(StereoMetrics.Marker.PARTICLE, 19.5);
+    }
+
+    /** shader: options file text to load the test pack with before this step, "-" to turn shaders off. */
     private static final class Step {
-        final String name; final StereoMode mode; final float ipd, conv; final boolean swap, resize;
+        final String name; final StereoMode mode; final float ipd, conv; final boolean swap, resize; final String shader;
         Step(String name, StereoMode mode, float ipd, float conv, boolean swap, boolean resize) {
-            this.name = name; this.mode = mode; this.ipd = ipd; this.conv = conv; this.swap = swap; this.resize = resize;
+            this(name, mode, ipd, conv, swap, resize, null);
+        }
+        Step(String name, StereoMode mode, float ipd, float conv, boolean swap, boolean resize, String shader) {
+            this.name = name; this.mode = mode; this.ipd = ipd; this.conv = conv; this.swap = swap; this.resize = resize; this.shader = shader;
         }
     }
 
-    private static final Step[] STEPS = {
-        new Step("mono", StereoMode.OFF, IPD, CONV, false, false),
-        new Step("half_conv4", StereoMode.SBS_HALF, IPD, CONV, false, false),
-        new Step("half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true, false),
-        new Step("half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false, false),
-        new Step("half_parallel_swap", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, true, false),
-        new Step("full_conv4", StereoMode.SBS_FULL, IPD, CONV, false, false),
-        new Step("half_ipd0", StereoMode.SBS_HALF, 0.0005f, 0f, false, false),
-        new Step("half_conv4_after_resize", StereoMode.SBS_HALF, IPD, CONV, false, true),
-    };
+    private static final Step[] STEPS = steps();
+
+    private static Step[] steps() {
+        java.util.List<Step> l = new java.util.ArrayList<>(java.util.Arrays.asList(
+            new Step("mono", StereoMode.OFF, IPD, CONV, false, false),
+            new Step("half_conv4", StereoMode.SBS_HALF, IPD, CONV, false, false),
+            new Step("half_conv4_swap", StereoMode.SBS_HALF, IPD, CONV, true, false),
+            new Step("half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false, false),
+            new Step("half_parallel_swap", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, true, false),
+            new Step("full_conv4", StereoMode.SBS_FULL, IPD, CONV, false, false),
+            new Step("half_ipd0", StereoMode.SBS_HALF, 0.0005f, 0f, false, false),
+            new Step("half_conv4_after_resize", StereoMode.SBS_HALF, IPD, CONV, false, true)));
+        if (SHADERS) {
+            // Complementary r5.7: TAA_MODE 1 = TAA on, 0 = off.
+            for (String[] pass : new String[][] {{"shaders", "TAA_MODE=1\n"}, {"shaders_noTAA", "TAA_MODE=0\n"}}) {
+                l.add(new Step(pass[0] + "_half_conv4", StereoMode.SBS_HALF, IPD, CONV, false, false, pass[1]));
+                l.add(new Step(pass[0] + "_half_parallel", StereoMode.SBS_HALF, PARALLEL_IPD, 0f, false, false));
+                l.add(new Step(pass[0] + "_half_ipd0", StereoMode.SBS_HALF, 0.0005f, 0f, false, false));
+            }
+        }
+        return l.toArray(new Step[0]);
+    }
 
     private enum Phase { BOOT, CREATING, SCENE, SETTLE, STEP, POPUP, EXITING, DONE }
 
@@ -91,6 +122,7 @@ public final class StereoSelfTest {
         WorldServer w = server.worldServerForDimension(0);
         w.setWorldTime(6000);
         w.getGameRules().setOrCreateGameRule("doDaylightCycle", "false");
+        w.getGameRules().setOrCreateGameRule("doMobSpawning", "false"); // superflat slimes wander into view
         w.getWorldInfo().setRaining(false);
         w.getWorldInfo().setThundering(false);
         column(w, -2, 6, 5, 14);   // red, near
@@ -146,7 +178,7 @@ public final class StereoSelfTest {
                     wait = 100; // chunk rebuild after the edits + teleport
                     break;
                 case SETTLE:
-                    apply(STEPS[0]);
+                    apply(mc, STEPS[0]);
                     phase = Phase.STEP;
                     wait = 20;
                     break;
@@ -156,16 +188,17 @@ public final class StereoSelfTest {
                     if (++step >= STEPS.length) {
                         // Achievement/tutorial popup: GuiAchievement draws outside
                         // the GUI flush with its own full-display viewport reset.
-                        apply(new Step("popup", StereoMode.SBS_HALF, IPD, CONV, false, false));
+                        apply(mc, new Step("popup", StereoMode.SBS_HALF, IPD, CONV, false, false, SHADERS ? "-" : null));
                         mc.guiAchievement.func_146255_b(net.minecraft.stats.AchievementList.openInventory);
                         phase = Phase.POPUP;
                         wait = 80; // tutorial slides in after 2.5 s
                         return;
                     }
-                    apply(STEPS[step]);
+                    apply(mc, STEPS[step]);
                     // First stereo activation re-sizes the Iris targets; allow
-                    // a full chunk/render settle like the other harnesses.
-                    wait = step == 1 ? 60 : (STEPS[step].resize ? 40 : 20);
+                    // a full chunk/render settle like the other harnesses. A
+                    // shader pack load compiles every program first.
+                    wait = STEPS[step].shader != null ? 300 : step == 1 ? 60 : (STEPS[step].resize ? 40 : 20);
                     break;
                 case POPUP:
                     popupShot = capture(mc, "half_popup");
@@ -185,12 +218,58 @@ public final class StereoSelfTest {
         }
     }
 
-    private static void apply(Step s) throws Exception {
+    private static void apply(Minecraft mc, Step s) throws Exception {
         StereoConfig.stereoscopicMode = s.mode;
         StereoConfig.stereoIpd = s.ipd;
         StereoConfig.stereoConvergence = s.conv;
         StereoConfig.stereoSwapEyes = s.swap;
         if (s.resize) Display.setDisplayMode(new DisplayMode(1000, 560));
+        if (s.shader != null) setShaders(mc, s.shader);
+        // Particle marker, re-spawned for each shot (the capture follows the
+        // wait). Left of the sheep, unlike the Fabric scene's x -3: in the
+        // 1.7.10 view that spot shares rows with the near red pillar's edge,
+        // whose disparity leaks into the particle's correlation patch.
+        mc.effectRenderer.addEffect(new MarkerFX(mc.theWorld, 9.0, Y + 2.5, 20.0));
+    }
+
+    /** Loads the test pack with {@code options} (its .txt), or turns shaders off for "-". */
+    private static void setShaders(Minecraft mc, String options) throws Exception {
+        net.coderbot.iris.config.IrisConfig cfg = net.coderbot.iris.Iris.getIrisConfig();
+        boolean on = !options.equals("-");
+        if (on) {
+            Path src = new File(SHADER_PACK).toPath();
+            Path dir = new File(mc.mcDataDir, "shaderpacks").toPath();
+            Files.createDirectories(dir);
+            Files.copy(src, dir.resolve(src.getFileName().toString()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.write(dir.resolve(src.getFileName() + ".txt"), options.getBytes("UTF-8")); // Iris per-pack options
+            cfg.setShaderPackName(src.getFileName().toString());
+        }
+        cfg.setShadersEnabled(on);
+        cfg.save();
+        net.coderbot.iris.Iris.reload();
+        StereoChecks.LOG.info("[stereo-test] shaders {}: {} [{}]", on ? "ON" : "OFF", SHADER_PACK, options.trim());
+    }
+
+    /**
+     * Particle marker: a motionless cyan-wool digging particle (normal
+     * EffectRenderer path), 1 block across, never fading for 20 s. 1.7.10 has
+     * no static particle type like later versions' block_marker.
+     */
+    private static final class MarkerFX extends net.minecraft.client.particle.EntityDiggingFX {
+        MarkerFX(net.minecraft.world.World w, double x, double y, double z) {
+            super(w, x, y, z, 0, 0, 0, Blocks.wool, 9); // 9 = cyan
+            motionX = motionY = motionZ = 0;
+            particleGravity = 0;
+            particleScale = 5f;
+            particleMaxAge = 400;
+            particleRed = particleGreen = particleBlue = 1f;
+        }
+
+        @Override
+        public void onUpdate() {
+            prevPosX = posX; prevPosY = posY; prevPosZ = posZ;
+            if (particleAge++ >= particleMaxAge) setDead();
+        }
     }
 
     private static Shot capture(Minecraft mc, String name) {
@@ -207,10 +286,22 @@ public final class StereoSelfTest {
         c.swapMirrors(shots.get("half_conv4"), shots.get("half_conv4_swap"));
         c.swapMirrors(shots.get("half_parallel"), shots.get("half_parallel_swap"));
         c.parallel(shots.get("half_parallel"));
+        c.depthScaling(shots.get("half_parallel"), DEPTH);
         c.convergenceConsistent(shots.get("half_conv4"), shots.get("half_parallel"));
         c.aspect(shots.get("mono"), shots.get("half_conv4"), shots.get("full_conv4"));
         c.eyesIdentical(shots.get("half_ipd0"));
         c.popupInBothHalves(popupShot);
+        if (SHADERS) {
+            for (String p : new String[] {"shaders", "shaders_noTAA"}) {
+                c.presence(shots.get(p + "_half_conv4"), shots.get(p + "_half_parallel"));
+                c.parallel(shots.get(p + "_half_parallel"));
+                c.depthScaling(shots.get(p + "_half_parallel"), DEPTH);
+                c.convergenceConsistent(shots.get(p + "_half_conv4"), shots.get(p + "_half_parallel"));
+                c.eyesIdentical(shots.get(p + "_half_ipd0"));
+            }
+        } else {
+            StereoChecks.LOG.info("[stereo-test] shaders: SKIPPED (no -Dstereoscopic.test.shaderpack)");
+        }
         finish(mc, c.failures.isEmpty() ? null : String.join("\n  ", c.failures));
     }
 

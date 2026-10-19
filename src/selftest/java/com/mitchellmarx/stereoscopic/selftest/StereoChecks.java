@@ -6,7 +6,9 @@ import com.mitchellmarx.stereoscopic.selftest.StereoMetrics.Marker;
 import com.mitchellmarx.stereoscopic.selftest.StereoMetrics.Shot;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Stereo correctness checks over measured screenshots — same thresholds as the
@@ -25,6 +27,31 @@ final class StereoChecks {
         this.parallelIpd = parallelIpd;
     }
 
+    /**
+     * Parallel disparity is f·IPD/depth for every point, whatever draws it, so
+     * K = -d·depth must agree across terrain, entity and particle markers.
+     * Catches a renderer applying a different eye separation (issue #5).
+     */
+    void depthScaling(Shot par, Map<Marker, Double> depth) {
+        Map<Marker, Double> k = new EnumMap<>(Marker.class);
+        for (Marker m : Marker.values()) {
+            if (par.left().get(m) == null || par.right().get(m) == null) continue;
+            k.put(m, -StereoMetrics.disparity(par, m) * depth.get(m));
+        }
+        if (k.size() < Marker.values().length) return; // presence check reports it
+        double[] sorted = k.values().stream().mapToDouble(Double::doubleValue).sorted().toArray();
+        double median = sorted[sorted.length / 2];
+        StringBuilder sb = new StringBuilder();
+        k.forEach((m, v) -> sb.append(String.format(" %s=%.1f", m, v)));
+        LOG.info("[stereo-test] {}: disparity x depth per marker:{}", par.name(), sb);
+        for (Map.Entry<Marker, Double> e : k.entrySet()) {
+            double ratio = e.getValue() / median;
+            if (ratio < 0.7 || ratio > 1.4) {
+                fail(String.format("%s: %s eye separation %.2fx the scene's (disparity x depth%s)", par.name(), e.getKey(), ratio, sb));
+            }
+        }
+    }
+
     void presence(Shot... shots) {
         for (Shot s : shots) {
             for (Marker m : Marker.values()) {
@@ -40,7 +67,9 @@ final class StereoChecks {
             if (d == null || ds == null) continue;
             log("%s/%s %s: disp %+.2f vs swapped %+.2f", normal.name(), swapped.name(), m, d, ds);
             if (Math.abs(d) < 0.3) continue;
-            if (Math.abs(d + ds) > 0.6) {
+            // Two separate renders: allow each ~0.3 px of measurement noise,
+            // more on small far LOD targets (up to 25% of the disparity).
+            if (Math.abs(d + ds) > Math.max(0.6, 0.25 * Math.abs(d))) {
                 fail(String.format("%s: swapEyes does not mirror %s disparity (%+.2f vs %+.2f)", swapped.name(), m, d, ds));
             }
         }
