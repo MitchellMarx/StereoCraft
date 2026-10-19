@@ -1,9 +1,12 @@
 dependencies {
-    // Angelica — pinned to 2.1.x patch stream. Spec section "Dependency stance".
-    implementation("com.github.GTNewHorizons:Angelica:[2.1,2.2):dev") { transitive = false }
+    // Angelica — pinned to the exact version the GTNH test instance runs. The
+    // old floating [2.1,2.2) range silently moved to 2.1.61, which needs
+    // GTNHLib 0.10+ (dev client refused to start) and differs from what
+    // players run — mixin targets were being checked against the wrong jar.
+    implementation("com.github.GTNewHorizons:Angelica:2.1.22:dev") { transitive = false }
 
     // GTNHLib — required; provides jvmDowngrader stubs at runtime.
-    api("com.github.GTNewHorizons:GTNHLib:0.9.52:dev")
+    api("com.github.GTNewHorizons:GTNHLib:0.9.68:dev")  // = GTNH test instance
 
     // RetroFuturaBootstrap — compileOnly; provides launchClassLoader for LWJGL3 reflective
     // class loading in WindowsCursorBackend / CursorPresentThread. Matches sbs2's pattern
