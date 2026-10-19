@@ -19,6 +19,7 @@
     "minecraft.MouseAccessor",
     "minecraft.CameraAccessor",
     "minecraft.MixinMinecraftClient",
+    "minecraft.MixinQuadParticleRenderState",
     "sodium.MixinUniformBufferManager",
     "sodium.MixinViewport"
   ],
